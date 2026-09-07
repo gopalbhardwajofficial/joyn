@@ -12,7 +12,7 @@ class AppTheme {
       colorScheme: const ColorScheme.light(
         primary: JoynColors.primary,
         onPrimary: Colors.white,
-        surface: JoynColors.background,
+        surface: JoynColors.surface,
         onSurface: JoynColors.primary,
         outline: JoynColors.border,
         error: JoynColors.error,

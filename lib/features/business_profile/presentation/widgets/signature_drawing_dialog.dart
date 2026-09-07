@@ -42,7 +42,6 @@ class _SignatureDrawingDialogState extends State<SignatureDrawingDialog> {
     });
   }
 
-  // Export Drawn Canvas to PNG File
   Future<void> _saveSignatureImage() async {
     if (_points.isEmpty) return;
 
@@ -95,7 +94,6 @@ class _SignatureDrawingDialogState extends State<SignatureDrawingDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Title Header Row
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -124,7 +122,7 @@ class _SignatureDrawingDialogState extends State<SignatureDrawingDialog> {
 
             const SizedBox(height: 16),
 
-            // Drawing Canvas Area
+
             Container(
               height: 200,
               width: double.infinity,
@@ -158,7 +156,6 @@ class _SignatureDrawingDialogState extends State<SignatureDrawingDialog> {
 
             const SizedBox(height: 12),
 
-            // Canvas Toolbar (Undo & Clear)
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -183,7 +180,6 @@ class _SignatureDrawingDialogState extends State<SignatureDrawingDialog> {
 
             const SizedBox(height: 20),
 
-            // Save Signature Button
             JoynButton(
               text: 'Save Signature',
               variant: JoynButtonVariant.filled,

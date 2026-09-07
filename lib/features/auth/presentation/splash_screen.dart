@@ -53,7 +53,7 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: JoynColors.background,
+      backgroundColor: JoynColors.iconBackground,
       body: Center(
         child: FadeTransition(
           opacity: _fadeAnimation,

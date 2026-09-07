@@ -1,6 +1,10 @@
 import 'dart:async';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/database/database_helper.dart';
 import '../../../core/services/local_storage_service.dart';
+import '../../business_profile/data/business_profile_repository.dart';
+import '../../business_profile/models/business_profile_model.dart';
 
 class AuthState {
   final bool isLoggedIn;
@@ -13,7 +17,6 @@ class AuthState {
   final String? selectedCompany;
   final List<String> createdBusinesses;
 
-  // Additional Profile Details
   final String ownerName;
   final String gstNumber;
   final String businessType;
@@ -30,7 +33,6 @@ class AuthState {
   final bool hasLogo;
   final bool hasSignature;
 
-  // Persistent Image Paths & Card Field Toggles
   final String? logoImagePath;
   final String? signatureImagePath;
   final bool showGstOnCard;
@@ -69,7 +71,6 @@ class AuthState {
     this.showCategoryOnCard = false,
   });
 
-  // Calculate Profile Completion Percentage
   int get profileCompletionPercentage {
     int score = 0;
     if (businessName.isNotEmpty) score += 20;
@@ -152,6 +153,7 @@ class AuthState {
 class AuthNotifier extends StateNotifier<AuthState> {
   Timer? _timer;
   LocalStorageService? _storage;
+  final BusinessProfileRepository _businessProfileRepository = BusinessProfileRepository();
 
   AuthNotifier() : super(const AuthState()) {
     _initStorage();
@@ -159,6 +161,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   Future<void> _initStorage() async {
     _storage = await LocalStorageService.getInstance();
+
     state = state.copyWith(
       isLoggedIn: _storage!.isLoggedIn,
       phoneNumber: _storage!.phoneNumber,
@@ -190,6 +193,41 @@ class AuthNotifier extends StateNotifier<AuthState> {
       showBusinessTypeOnCard: _storage!.showBusinessTypeOnCard,
       showCategoryOnCard: _storage!.showCategoryOnCard,
     );
+
+    await _loadFromDatabase();
+  }
+
+  Future<void> _loadFromDatabase() async {
+    try {
+      final dbProfile = await _businessProfileRepository.getBusinessProfile();
+      if (dbProfile != null) {
+        state = state.copyWith(
+          businessName: dbProfile.businessName.isNotEmpty ? dbProfile.businessName : state.businessName,
+          ownerName: dbProfile.ownerName.isNotEmpty ? dbProfile.ownerName : state.ownerName,
+          gstNumber: dbProfile.gstNumber,
+          businessType: dbProfile.businessType,
+          businessCategory: dbProfile.businessCategory,
+          phoneNumber: dbProfile.phone1.isNotEmpty ? dbProfile.phone1 : state.phoneNumber,
+          phone2: dbProfile.phone2,
+          email: dbProfile.email.isNotEmpty ? dbProfile.email : state.email,
+          website: dbProfile.website,
+          address: dbProfile.address,
+          city: dbProfile.city,
+          state: dbProfile.state,
+          pincode: dbProfile.pincode,
+          country: dbProfile.country,
+          description: dbProfile.description,
+          booksStartDate: dbProfile.booksStartDate,
+          logoImagePath: dbProfile.logoPath ?? state.logoImagePath,
+          signatureImagePath: dbProfile.signaturePath ?? state.signatureImagePath,
+          showGstOnCard: dbProfile.showGstOnCard,
+          showBusinessTypeOnCard: dbProfile.showBusinessTypeOnCard,
+          showCategoryOnCard: dbProfile.showCategoryOnCard,
+        );
+      }
+    } catch (e) {
+      debugPrint('Error loading from database: $e');
+    }
   }
 
   Future<void> setPhoneNumber(String phone) async {
@@ -280,6 +318,33 @@ class AuthNotifier extends StateNotifier<AuthState> {
     if (showBusinessTypeOnCard != null) await _storage?.setShowBusinessTypeOnCard(showBusinessTypeOnCard);
     if (showCategoryOnCard != null) await _storage?.setShowCategoryOnCard(showCategoryOnCard);
 
+    final profile = BusinessProfileModel(
+      businessName: businessName,
+      ownerName: ownerName,
+      gstNumber: gstNumber,
+      businessType: businessType,
+      businessCategory: businessCategory,
+      phone1: phone1,
+      phone2: phone2,
+      email: email,
+      website: website,
+      address: address,
+      city: city,
+      state: stateName,
+      pincode: pincode,
+      country: country,
+      description: description,
+      booksStartDate: booksStartDate,
+      logoPath: logoImagePath,
+      signaturePath: signatureImagePath,
+      showGstOnCard: showGstOnCard ?? state.showGstOnCard,
+      showBusinessTypeOnCard: showBusinessTypeOnCard ?? state.showBusinessTypeOnCard,
+      showCategoryOnCard: showCategoryOnCard ?? state.showCategoryOnCard,
+      updatedAt: DateTime.now(),
+    );
+
+    await _businessProfileRepository.saveBusinessProfile(profile);
+
     final updatedBusinesses = _storage?.businessesList ?? state.createdBusinesses;
 
     state = state.copyWith(
@@ -342,6 +407,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
       isLoggedIn: true,
     );
     await _storage?.setLoggedIn(true);
+  }
+
+  Future<void> logout() async {
+    await _storage?.setLoggedIn(false);
+    state = state.copyWith(
+      isLoggedIn: false,
+      selectedCompany: null,
+    );
   }
 
   @override

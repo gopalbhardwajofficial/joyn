@@ -1,11 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'core/database/database_helper.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Force recreate database (DEVELOPMENT ONLY)
+  // Remove this in production
+  final dbHelper = DatabaseHelper();
+  await dbHelper.forceRecreateDatabase();
+
+  debugPrint('Database recreated for development');
+
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -13,6 +22,7 @@ void main() {
       statusBarBrightness: Brightness.light,
     ),
   );
+
   runApp(
     const ProviderScope(
       child: JoynApp(),

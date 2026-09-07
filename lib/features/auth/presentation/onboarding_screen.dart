@@ -16,27 +16,18 @@ class OnboardingScreen extends ConsumerStatefulWidget {
   ConsumerState<OnboardingScreen> createState() => _OnboardingScreenState();
 }
 
-class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
-  late VideoPlayerController _videoController;
+class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
+    with WidgetsBindingObserver {
+  VideoPlayerController? _videoController;
   bool _isVideoInitialized = false;
   bool _hasAutoTriggeredPhonePicker = false;
 
   @override
   void initState() {
     super.initState();
-    _videoController = VideoPlayerController.asset('assets/JoynSplashVideo.mp4')
-      ..setLooping(true)
-      ..setVolume(0.0)
-      ..initialize().then((_) {
-        if (mounted) {
-          setState(() {
-            _isVideoInitialized = true;
-          });
-          _videoController.play();
-        }
-      }).catchError((_) {});
+    WidgetsBinding.instance.addObserver(this);
+    _initializeVideo();
 
-    // Automatically pop-up the Phone Number bottom sheet / Credential Manager on screen launch
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_hasAutoTriggeredPhonePicker && mounted) {
         _hasAutoTriggeredPhonePicker = true;
@@ -45,15 +36,66 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     });
   }
 
+  Future<void> _initializeVideo() async {
+
+    await _disposeVideoController();
+
+    final controller = VideoPlayerController.asset('assets/JoynSplashVideo.mp4');
+    _videoController = controller;
+
+    controller
+      ..setLooping(true)
+      ..setVolume(0.0);
+
+    try {
+      await controller.initialize();
+      if (!mounted) {
+
+        await controller.dispose();
+        return;
+      }
+      setState(() {
+        _isVideoInitialized = true;
+      });
+      await controller.play();
+    } catch (_) {
+
+    }
+  }
+
+  Future<void> _disposeVideoController() async {
+    final old = _videoController;
+    _videoController = null;
+    if (old != null) {
+      try {
+        await old.pause();
+      } catch (_) {}
+      await old.dispose();
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final controller = _videoController;
+    if (controller == null || !controller.value.isInitialized) return;
+
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      controller.pause();
+    } else if (state == AppLifecycleState.resumed) {
+      if (mounted) controller.play();
+    }
+  }
+
   @override
   void dispose() {
-    _videoController.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    _disposeVideoController();
     super.dispose();
   }
 
   Future<void> _handlePhoneLogin() async {
     try {
-      // Trigger native Android Phone Hint / Credential Manager popup
+
       final String? autoNumber = await SmsAutoFill().hint;
       if (autoNumber != null && autoNumber.isNotEmpty) {
         String formatted = autoNumber;
@@ -63,7 +105,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         ref.read(authProvider.notifier).setPhoneNumber(formatted);
       }
     } catch (_) {
-      // Graceful fallback if hint picker is dismissed or unavailable
+
     }
 
     if (mounted) {
@@ -84,41 +126,43 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // Background Video
+
           Positioned.fill(
-            child: _isVideoInitialized
+            child: (_isVideoInitialized && _videoController != null)
                 ? SizedBox.expand(
-                    child: FittedBox(
-                      fit: BoxFit.cover,
-                      child: SizedBox(
-                        width: _videoController.value.size.width > 0
-                            ? _videoController.value.size.width
-                            : size.width,
-                        height: _videoController.value.size.height > 0
-                            ? _videoController.value.size.height
-                            : size.height,
-                        child: VideoPlayer(_videoController),
-                      ),
-                    ),
-                  )
+
+              key: ValueKey(_videoController.hashCode),
+              child: FittedBox(
+                fit: BoxFit.cover,
+                child: SizedBox(
+                  width: _videoController!.value.size.width > 0
+                      ? _videoController!.value.size.width
+                      : size.width,
+                  height: _videoController!.value.size.height > 0
+                      ? _videoController!.value.size.height
+                      : size.height,
+                  child: VideoPlayer(_videoController!),
+                ),
+              ),
+            )
                 : Container(color: Colors.black),
           ),
 
-          // Dark Overlay (~40% Opacity)
+
           Positioned.fill(
             child: Container(
               color: Colors.black.withValues(alpha: 0.42),
             ),
           ),
 
-          // Content Layer
+
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Top Left Logo
+
                   const JoynLogo(
                     color: Colors.white,
                     size: 26,
@@ -126,7 +170,6 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
                   const Spacer(),
 
-                  // Center Left Premium Headline
                   Text(
                     'Every Sale.\nEvery Store.\nOne Platform.',
                     style: JoynTypography.titleLarge.copyWith(
@@ -139,7 +182,6 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
                   const SizedBox(height: 14),
 
-                  // Small Subtitle
                   Text(
                     'Built for growing businesses like yours.',
                     style: JoynTypography.subtitle.copyWith(
@@ -151,7 +193,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
                   const SizedBox(height: 44),
 
-                  // Primary White Button: Login with Phone Number
+
                   JoynButton(
                     text: 'Login with Phone Number',
                     variant: JoynButtonVariant.whiteFilled,
@@ -160,7 +202,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
                   const SizedBox(height: 14),
 
-                  // Text Button: Use Another Method
+
                   Center(
                     child: JoynButton(
                       text: 'Use Another Method',

@@ -47,7 +47,7 @@ class _ManualLoginScreenState extends ConsumerState<ManualLoginScreen> {
             children: [
               const SizedBox(height: 12),
 
-              // Heading
+
               Text(
                 'Sign in',
                 style: JoynTypography.heading.copyWith(
@@ -57,7 +57,6 @@ class _ManualLoginScreenState extends ConsumerState<ManualLoginScreen> {
 
               const SizedBox(height: 8),
 
-              // Subtitle
               Text(
                 'Enter your mobile number to continue',
                 style: JoynTypography.subtitle,
@@ -65,7 +64,7 @@ class _ManualLoginScreenState extends ConsumerState<ManualLoginScreen> {
 
               const SizedBox(height: 32),
 
-              // Phone Field with +91 picker
+
               JoynPhoneTextField(
                 controller: _phoneController,
                 onChanged: (val) {
@@ -75,7 +74,7 @@ class _ManualLoginScreenState extends ConsumerState<ManualLoginScreen> {
 
               const SizedBox(height: 20),
 
-              // Continue Button
+
               JoynButton(
                 text: 'Continue',
                 variant: JoynButtonVariant.filled,
@@ -87,7 +86,6 @@ class _ManualLoginScreenState extends ConsumerState<ManualLoginScreen> {
 
               const SizedBox(height: 28),
 
-              // OR Divider
               Row(
                 children: [
                   const Expanded(
@@ -111,19 +109,18 @@ class _ManualLoginScreenState extends ConsumerState<ManualLoginScreen> {
 
               const SizedBox(height: 28),
 
-              // Continue with Google
               JoynButton(
                 text: 'Continue with Google',
                 variant: JoynButtonVariant.outlined,
                 leadingIcon: _GoogleIcon(),
                 onPressed: () {
-                  // Handle Google Sign-in flow
+
                 },
               ),
 
               const Spacer(),
 
-              // Terms & Privacy footer
+
               Center(
                 child: Padding(
                   padding: const EdgeInsets.only(bottom: 16),
@@ -173,7 +170,7 @@ class _GoogleIcon extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       width: 20,
-      height: 20,
+      height: 25,
       child: CustomPaint(
         painter: _GoogleIconPainter(),
       ),
@@ -192,7 +189,6 @@ class _GoogleIconPainter extends CustomPainter {
     final paintGreen = Paint()..color = const Color(0xFF34A853);
     final paintYellow = Paint()..color = const Color(0xFFFBBC05);
 
-    // Draw multi-colored G logo path
     final pathRed = Path()
       ..moveTo(w * 0.5, h * 0.2)
       ..cubicTo(w * 0.68, h * 0.2, w * 0.81, h * 0.27, w * 0.9, h * 0.35)
