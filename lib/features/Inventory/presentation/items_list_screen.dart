@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../../core/theme/joyn_colors.dart';
 import '../../../core/theme/joyn_typography.dart';
 import '../../orders/models/sales_models.dart';
@@ -67,7 +68,6 @@ class _ItemsListScreenState extends State<ItemsListScreen> {
 
   void _applyFilters() {
     var list = _items.where((item) {
-      // Search filter
       final query = _searchQuery.toLowerCase().trim();
       final matchesQuery = query.isEmpty ||
           item.name.toLowerCase().contains(query) ||
@@ -75,19 +75,16 @@ class _ItemsListScreenState extends State<ItemsListScreen> {
           item.barcode.contains(query) ||
           item.hsnSac.toLowerCase().contains(query);
 
-      // Stock filter
       final matchesStock = _stockFilter == _StockFilter.all ||
           (_stockFilter == _StockFilter.inStock && item.stock > 5) ||
           (_stockFilter == _StockFilter.lowStock && item.stock > 0 && item.stock <= 5) ||
           (_stockFilter == _StockFilter.outOfStock && item.stock <= 0);
 
-      // Category filter
       final matchesCategory = _filterCategory == null || item.category == _filterCategory;
 
       return matchesQuery && matchesStock && matchesCategory;
     }).toList();
 
-    // Apply sorting
     switch (_sortOption) {
       case _SortOption.nameAsc:
         list.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
@@ -120,6 +117,35 @@ class _ItemsListScreenState extends State<ItemsListScreen> {
       _searchQuery = value;
       _applyFilters();
     });
+  }
+
+  Future<void> _shareItem(InventoryItemModel item) async {
+    final String shareText = '''
+🛒 *Item Details*
+📦 Name: ${item.name}
+🏷️ Category: ${item.category.isNotEmpty ? item.category : 'N/A'}
+💰 Selling Price: ₹${item.sellingPrice.toStringAsFixed(2)}
+📊 Stock: ${item.stock} ${item.unit}
+📍 Location: ${item.location.isNotEmpty ? item.location : 'N/A'}
+🧾 HSN/SAC: ${item.hsnSac.isNotEmpty ? item.hsnSac : 'N/A'}
+''';
+
+    try {
+      await Share.share(
+        shareText,
+        subject: 'Item: ${item.name}',
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not share: $e'),
+            backgroundColor: JoynColors.error,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _navigateToAddItem() async {
@@ -445,7 +471,6 @@ class _ItemsListScreenState extends State<ItemsListScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Stock Filter
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
                     child: Text('Stock Status', style: JoynTypography.bodyMedium.copyWith(fontSize: 13, fontWeight: FontWeight.w700, color: JoynColors.secondaryText)),
@@ -475,7 +500,6 @@ class _ItemsListScreenState extends State<ItemsListScreen> {
 
                   const SizedBox(height: 20),
 
-                  // Category Filter
                   if (_availableCategories.isNotEmpty) ...[
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -504,7 +528,6 @@ class _ItemsListScreenState extends State<ItemsListScreen> {
                     const SizedBox(height: 20),
                   ],
 
-                  // Apply buttons
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
                     child: Row(
@@ -619,7 +642,6 @@ class _ItemsListScreenState extends State<ItemsListScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Search + Sort + Filter row
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
               child: Row(
@@ -739,7 +761,6 @@ class _ItemsListScreenState extends State<ItemsListScreen> {
               ),
             ),
 
-            // Active filters display
             if (activeFilterCount > 0)
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
@@ -815,7 +836,6 @@ class _ItemsListScreenState extends State<ItemsListScreen> {
                 ),
               ),
 
-            // Items List
             Expanded(
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator(color: JoynColors.primary))
@@ -864,7 +884,6 @@ class _ItemsListScreenState extends State<ItemsListScreen> {
               ),
             ),
 
-            // Add Item Button
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
               child: Container(
@@ -932,15 +951,16 @@ class _ItemsListScreenState extends State<ItemsListScreen> {
     final isLowStock = item.stock <= 5 && item.stock > 0;
     final isOutOfStock = item.stock <= 0;
 
+    // Slightly reduced card padding and margins
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [Colors.white, JoynColors.background],
         ),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: JoynColors.border, width: 1.2),
         boxShadow: [
           BoxShadow(
@@ -955,9 +975,9 @@ class _ItemsListScreenState extends State<ItemsListScreen> {
         child: InkWell(
           onTap: () => _navigateToItemDetail(item),
           onLongPress: () => _showItemOptions(item),
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(16),
           child: Padding(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -965,14 +985,14 @@ class _ItemsListScreenState extends State<ItemsListScreen> {
                   children: [
                     // Item Photo or Icon
                     Container(
-                      width: 50,
-                      height: 50,
+                      width: 45,
+                      height: 45,
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(12),
                       ),
                       child: item.photoPath.isNotEmpty
                           ? ClipRRect(
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(12),
                         child: Image.file(
                           File(item.photoPath),
                           fit: BoxFit.cover,
@@ -983,7 +1003,7 @@ class _ItemsListScreenState extends State<ItemsListScreen> {
                       )
                           : _buildItemIconFallback(item),
                     ),
-                    const SizedBox(width: 14),
+                    const SizedBox(width: 12),
                     // Item Info
                     Expanded(
                       child: Column(
@@ -999,10 +1019,10 @@ class _ItemsListScreenState extends State<ItemsListScreen> {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: 3),
                           if (item.category.isNotEmpty)
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                               decoration: BoxDecoration(
                                 color: JoynColors.chipBackground,
                                 borderRadius: BorderRadius.circular(20),
@@ -1010,7 +1030,7 @@ class _ItemsListScreenState extends State<ItemsListScreen> {
                               child: Text(
                                 item.category,
                                 style: JoynTypography.caption.copyWith(
-                                  fontSize: 10.5,
+                                  fontSize: 10,
                                   fontWeight: FontWeight.w600,
                                   color: JoynColors.secondaryText,
                                 ),
@@ -1021,7 +1041,7 @@ class _ItemsListScreenState extends State<ItemsListScreen> {
                     ),
                     // Stock Badge
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
                         color: isOutOfStock
                             ? JoynColors.error.withValues(alpha: 0.08)
@@ -1041,7 +1061,7 @@ class _ItemsListScreenState extends State<ItemsListScreen> {
                       child: Text(
                         'Stock: ${item.stock}',
                         style: JoynTypography.caption.copyWith(
-                          fontSize: 10.5,
+                          fontSize: 10,
                           fontWeight: FontWeight.w700,
                           color: isOutOfStock
                               ? JoynColors.error
@@ -1051,14 +1071,23 @@ class _ItemsListScreenState extends State<ItemsListScreen> {
                         ),
                       ),
                     ),
+                    // Share button (added)
+                    IconButton(
+                      icon: const Icon(Icons.share_outlined, size: 18, color: JoynColors.primary),
+                      onPressed: () => _shareItem(item),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                    ),
                     // More Options Button
                     IconButton(
-                      icon: const Icon(Icons.more_vert_rounded, size: 20, color: JoynColors.secondaryText),
+                      icon: const Icon(Icons.more_vert_rounded, size: 18, color: JoynColors.secondaryText),
                       onPressed: () => _showItemOptions(item),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 // Price Info
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1069,47 +1098,22 @@ class _ItemsListScreenState extends State<ItemsListScreen> {
                   ],
                 ),
                 if (item.barcode.isNotEmpty) ...[
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 8),
                   Row(
                     children: [
-                      const Icon(Icons.qr_code_rounded, size: 14, color: JoynColors.secondaryText),
-                      const SizedBox(width: 6),
+                      const Icon(Icons.qr_code_rounded, size: 12, color: JoynColors.secondaryText),
+                      const SizedBox(width: 4),
                       Text(
                         'Barcode: ${item.barcode}',
                         style: JoynTypography.caption.copyWith(
-                          fontSize: 11,
+                          fontSize: 10,
                           color: JoynColors.secondaryText,
                         ),
                       ),
                     ],
                   ),
                 ],
-                // Edit Button
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton.icon(
-                      onPressed: () => _navigateToEditItem(item),
-                      icon: const Icon(Icons.edit_outlined, size: 16, color: const Color(0xFFF59E0B)),
-                      label: Text(
-                        'Edit',
-                        style: JoynTypography.caption.copyWith(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: const Color(0xFFF59E0B),
-                        ),
-                      ),
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                        backgroundColor: const Color(0xFFF59E0B).withValues(alpha: 0.08),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                // No Edit button here anymore
               ],
             ),
           ),
@@ -1129,13 +1133,13 @@ class _ItemsListScreenState extends State<ItemsListScreen> {
             JoynColors.primary.withValues(alpha: 0.16),
           ],
         ),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
       ),
       alignment: Alignment.center,
       child: Text(
         item.name.isNotEmpty ? item.name[0].toUpperCase() : '?',
         style: JoynTypography.titleMedium.copyWith(
-          fontSize: 20,
+          fontSize: 18,
           fontWeight: FontWeight.w800,
           color: JoynColors.primary,
         ),
@@ -1154,15 +1158,15 @@ class _ItemsListScreenState extends State<ItemsListScreen> {
         Text(
           label,
           style: JoynTypography.caption.copyWith(
-            fontSize: 10,
+            fontSize: 9,
             color: JoynColors.secondaryText,
           ),
         ),
-        const SizedBox(height: 2),
+        const SizedBox(height: 1),
         Text(
           displayValue,
           style: JoynTypography.caption.copyWith(
-            fontSize: 12,
+            fontSize: 11,
             fontWeight: FontWeight.w700,
             color: JoynColors.primary,
           ),

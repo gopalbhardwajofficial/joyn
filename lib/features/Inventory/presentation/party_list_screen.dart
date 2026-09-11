@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -7,8 +8,10 @@ import '../../orders/models/sales_models.dart';
 import '../../orders/data/sales_repository.dart';
 import '../presentation/add_new_party_screen.dart';
 import '../presentation/party_detail_screen.dart';
+import 'package:joyn/features/Inventory/widgets/avatar.dart';
 import 'package:joyn/features/Inventory/presentation/sale_form_screen.dart';
 import 'package:joyn/features/Inventory/presentation/payment_in_screen.dart';
+import 'package:joyn/features/orders/presentation/add_purchase_order_screen.dart';
 
 enum _SortOption { nameAsc, nameDesc, categoryAsc }
 
@@ -22,11 +25,15 @@ class PartyListScreen extends StatefulWidget {
 class _PartyListScreenState extends State<PartyListScreen> {
   final SalesRepository _salesRepository = SalesRepository();
   List<PartyModel> _parties = [];
+  Map<String, Map<String, dynamic>> _balances = {};
   bool _isLoading = true;
   String _searchQuery = '';
 
   _SortOption _sortOption = _SortOption.nameAsc;
   String? _filterCategory;
+  String? _filterPartyType;
+  String? _filterPriority;
+  String? _filterCity;
 
   @override
   void initState() {
@@ -37,9 +44,11 @@ class _PartyListScreenState extends State<PartyListScreen> {
   Future<void> _loadParties() async {
     try {
       final parties = await _salesRepository.getParties();
+      final balances = await _salesRepository.getAllPartyBalances();
       if (!mounted) return;
       setState(() {
         _parties = parties;
+        _balances = balances;
         _isLoading = false;
       });
     } catch (e) {
@@ -52,14 +61,21 @@ class _PartyListScreenState extends State<PartyListScreen> {
   List<String> get _availableCategories =>
       _parties.map((p) => p.category).where((c) => c.isNotEmpty).toSet().toList()..sort();
 
+  List<String> get _availableCities =>
+      _parties.map((p) => p.city).where((c) => c.isNotEmpty).toSet().toList()..sort();
+
   List<PartyModel> get _filteredParties {
     var list = _parties.where((party) {
       final matchesQuery = _searchQuery.isEmpty ||
           party.name.toLowerCase().contains(_searchQuery.toLowerCase()) ||
           party.category.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+          party.city.toLowerCase().contains(_searchQuery.toLowerCase()) ||
           party.contactNumber.contains(_searchQuery);
-      final matchesFilter = _filterCategory == null || party.category == _filterCategory;
-      return matchesQuery && matchesFilter;
+      final matchesCategory = _filterCategory == null || party.category == _filterCategory;
+      final matchesType = _filterPartyType == null || party.partyType == _filterPartyType;
+      final matchesPriority = _filterPriority == null || party.priorityLevel == _filterPriority;
+      final matchesCity = _filterCity == null || party.city == _filterCity;
+      return matchesQuery && matchesCategory && matchesType && matchesPriority && matchesCity;
     }).toList();
 
     switch (_sortOption) {
@@ -184,48 +200,144 @@ class _PartyListScreenState extends State<PartyListScreen> {
     );
   }
 
-  void _showFilterSheet() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 12),
-            Container(
-              width: 40,
-              height: 4.5,
-              margin: const EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(color: JoynColors.border, borderRadius: BorderRadius.circular(3)),
-            ),
-            Text('Filter By Category', style: JoynTypography.titleMedium.copyWith(fontSize: 17, fontWeight: FontWeight.w800)),
-            const SizedBox(height: 8),
-            ListTile(
-              title: Text('All', style: JoynTypography.bodyLarge.copyWith(fontSize: 14.5, fontWeight: _filterCategory == null ? FontWeight.w700 : FontWeight.w500)),
-              trailing: _filterCategory == null ? const Icon(Icons.check_rounded, color: JoynColors.primary) : null,
-              onTap: () {
-                setState(() => _filterCategory = null);
-                Navigator.pop(context);
-              },
-            ),
-            ..._availableCategories.map((category) => ListTile(
-              title: Text(category, style: JoynTypography.bodyLarge.copyWith(fontSize: 14.5, fontWeight: _filterCategory == category ? FontWeight.w700 : FontWeight.w500)),
-              trailing: _filterCategory == category ? const Icon(Icons.check_rounded, color: JoynColors.primary) : null,
-              onTap: () {
-                setState(() => _filterCategory = category);
-                Navigator.pop(context);
-              },
-            )),
-            const SizedBox(height: 8),
-          ],
+  Widget _filterChip(String label, bool selected, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        decoration: BoxDecoration(
+          color: selected ? JoynColors.primary : JoynColors.chipBackground,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          label,
+          style: JoynTypography.caption.copyWith(fontSize: 12.5, fontWeight: FontWeight.w700, color: selected ? Colors.white : JoynColors.secondaryText),
         ),
       ),
     );
   }
 
-  // ---- Bottom bar actions ----------------------------------------------
+  Widget _filterChipSection(
+      String title,
+      List<String> options,
+      String? selected,
+      void Function(String?) onSelect, {
+        Map<String, String>? labels,
+      }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: JoynTypography.bodyMedium.copyWith(fontSize: 13, fontWeight: FontWeight.w700, color: JoynColors.secondaryText)),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _filterChip('All', selected == null, () => onSelect(null)),
+            ...options.map((o) => _filterChip(labels?[o] ?? o, selected == o, () => onSelect(o))),
+          ],
+        ),
+        const SizedBox(height: 18),
+      ],
+    );
+  }
+
+  void _showFilterSheet() {
+    String? tempCategory = _filterCategory;
+    String? tempType = _filterPartyType;
+    String? tempPriority = _filterPriority;
+    String? tempCity = _filterCity;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => SafeArea(
+          child: Padding(
+            padding: EdgeInsets.only(left: 20, right: 20, top: 12, bottom: MediaQuery.of(context).viewInsets.bottom + 16),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.78),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4.5,
+                        margin: const EdgeInsets.only(bottom: 16),
+                        decoration: BoxDecoration(color: JoynColors.border, borderRadius: BorderRadius.circular(3)),
+                      ),
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Filters', style: JoynTypography.titleMedium.copyWith(fontSize: 17, fontWeight: FontWeight.w800)),
+                        TextButton(
+                          onPressed: () => setModalState(() {
+                            tempCategory = null;
+                            tempType = null;
+                            tempPriority = null;
+                            tempCity = null;
+                          }),
+                          child: const Text('Clear All'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    _filterChipSection('Category', _availableCategories, tempCategory, (v) => setModalState(() => tempCategory = v)),
+                    _filterChipSection(
+                      'Customer / Supplier',
+                      const ['customer', 'supplier', 'both'],
+                      tempType,
+                          (v) => setModalState(() => tempType = v),
+                      labels: const {'customer': 'Customer', 'supplier': 'Supplier', 'both': 'Both'},
+                    ),
+                    _filterChipSection(
+                      'Priority',
+                      const ['high', 'medium', 'low'],
+                      tempPriority,
+                          (v) => setModalState(() => tempPriority = v),
+                      labels: const {'high': 'High', 'medium': 'Medium', 'low': 'Low'},
+                    ),
+                    if (_availableCities.isNotEmpty)
+                      _filterChipSection('City', _availableCities, tempCity, (v) => setModalState(() => tempCity = v)),
+                    const SizedBox(height: 4),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          setState(() {
+                            _filterCategory = tempCategory;
+                            _filterPartyType = tempType;
+                            _filterPriority = tempPriority;
+                            _filterCity = tempCity;
+                          });
+                          Navigator.pop(context);
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: JoynColors.primary,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                        child: Text('Apply Filters', style: JoynTypography.buttonText.copyWith(fontSize: 15)),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   Future<void> _pickPartyThen(void Function(PartyModel party) onPicked) async {
     if (_parties.isEmpty) {
@@ -263,26 +375,7 @@ class _PartyListScreenState extends State<PartyListScreen> {
                   itemBuilder: (context, index) {
                     final p = _parties[index];
                     return ListTile(
-                      leading: Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [
-                              JoynColors.primary.withValues(alpha: 0.08),
-                              JoynColors.primary.withValues(alpha: 0.16),
-                            ],
-                          ),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          p.name.isNotEmpty ? p.name[0].toUpperCase() : '?',
-                          style: JoynTypography.titleMedium.copyWith(fontSize: 16, fontWeight: FontWeight.w800, color: JoynColors.primary),
-                        ),
-                      ),
+                      leading: _buildPartyAvatar(p, size: 40),
                       title: Text(p.name, style: JoynTypography.bodyLarge.copyWith(fontSize: 14.5, fontWeight: FontWeight.w600)),
                       subtitle: p.category.isNotEmpty ? Text(p.category) : null,
                       trailing: const Icon(Icons.chevron_right_rounded, size: 20, color: JoynColors.secondaryText),
@@ -317,6 +410,31 @@ class _PartyListScreenState extends State<PartyListScreen> {
     if (saved == true) _loadParties();
   }
 
+  // ============================================================
+  // NEW: Add Purchase — opens AddPurchaseOrderScreen prefilled
+  // with the picked party.
+  // ============================================================
+  Future<void> _openAddPurchase(PartyModel party) async {
+    HapticFeedback.lightImpact();
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => AddPurchaseOrderScreen(initialParty: party)),
+    );
+    if (saved == true) _loadParties();
+  }
+
+  // ============================================================
+  // NEW: Make Payment — reuses PaymentInScreen but forces
+  // isPaymentOut: true, since "Make Payment" means paying the
+  // party (e.g. a supplier) rather than receiving from them.
+  // ============================================================
+  Future<void> _openMakePayment(PartyModel party) async {
+    HapticFeedback.lightImpact();
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => PaymentInScreen(party: party, isPaymentOut: true)),
+    );
+    if (saved == true) _loadParties();
+  }
+
   void _openTakePaymentGeneric() {
     HapticFeedback.lightImpact();
     _pickPartyThen(_openTakePayment);
@@ -325,6 +443,16 @@ class _PartyListScreenState extends State<PartyListScreen> {
   void _openAddSaleGeneric() {
     HapticFeedback.lightImpact();
     _pickPartyThen(_openAddSale);
+  }
+
+  void _openAddPurchaseGeneric() {
+    HapticFeedback.lightImpact();
+    _pickPartyThen(_openAddPurchase);
+  }
+
+  void _openMakePaymentGeneric() {
+    HapticFeedback.lightImpact();
+    _pickPartyThen(_openMakePayment);
   }
 
   Widget _buildBottomActionButton({
@@ -389,6 +517,79 @@ class _PartyListScreenState extends State<PartyListScreen> {
     );
   }
 
+  // Avatar builder now reads from the SHARED kPartyAvatarOptions list
+  // (party_avatar_options.dart), so the emoji/gradient shown here
+  // always matches what was picked in AddNewPartyScreen.
+  Widget _buildPartyAvatar(PartyModel party, {double size = 50}) {
+    // Check if party has a photo
+    if (party.photoPath.isNotEmpty && File(party.photoPath).existsSync()) {
+      return Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(size * 0.28),
+          image: DecorationImage(image: FileImage(File(party.photoPath)), fit: BoxFit.cover),
+        ),
+      );
+    }
+
+    // Check if party has an avatar index from the add_new_party_screen
+    if (party.avatarIndex != null &&
+        party.avatarIndex! >= 0 &&
+        party.avatarIndex! < kPartyAvatarOptions.length) {
+      final option = kPartyAvatarOptions[party.avatarIndex!];
+      return Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(colors: option.gradient, begin: Alignment.topLeft, end: Alignment.bottomRight),
+          borderRadius: BorderRadius.circular(size * 0.28),
+        ),
+        alignment: Alignment.center,
+        child: Text(option.emoji, style: TextStyle(fontSize: size * 0.46)),
+      );
+    }
+
+    // Fallback to letter avatar
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [
+          JoynColors.primary.withValues(alpha: 0.08),
+          JoynColors.primary.withValues(alpha: 0.16),
+        ]),
+        borderRadius: BorderRadius.circular(size * 0.28),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        party.name.isNotEmpty ? party.name[0].toUpperCase() : '?',
+        style: JoynTypography.titleMedium.copyWith(fontSize: size * 0.4, fontWeight: FontWeight.w800, color: JoynColors.primary),
+      ),
+    );
+  }
+
+  Widget _buildBalanceLabel(PartyModel party) {
+    final info = _balances[party.id];
+    final balance = (info?['balance'] as double?) ?? 0;
+
+    if (balance <= 0) {
+      return Text('₹0', style: JoynTypography.caption.copyWith(fontSize: 11.5, fontWeight: FontWeight.w700, color: JoynColors.secondaryText));
+    }
+
+    final isReceivable = info?['isReceivable'] as bool? ?? true;
+    final color = isReceivable ? JoynColors.success : JoynColors.error;
+    final label = isReceivable ? "You'll Get" : "You'll Give";
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Text('₹${balance.toStringAsFixed(0)}', style: JoynTypography.bodyMedium.copyWith(fontSize: 13.5, fontWeight: FontWeight.w800, color: color)),
+        Text(label, style: JoynTypography.caption.copyWith(fontSize: 10, fontWeight: FontWeight.w600, color: color)),
+      ],
+    );
+  }
+
   Widget _buildPartyCard(PartyModel party) {
     return InkWell(
       onTap: () => _openPartyDetail(party),
@@ -403,72 +604,96 @@ class _PartyListScreenState extends State<PartyListScreen> {
         ),
         child: Padding(
           padding: const EdgeInsets.all(14),
-          child: Row(
+          child: Column(
             children: [
-              Container(
-                width: 50,
-                height: 50,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [
-                    JoynColors.primary.withValues(alpha: 0.08),
-                    JoynColors.primary.withValues(alpha: 0.16),
-                  ]),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  party.name.isNotEmpty ? party.name[0].toUpperCase() : '?',
-                  style: JoynTypography.titleMedium.copyWith(fontSize: 20, fontWeight: FontWeight.w800, color: JoynColors.primary),
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(party.name, style: JoynTypography.bodyLarge.copyWith(fontSize: 15, fontWeight: FontWeight.w700, color: JoynColors.primary), maxLines: 1, overflow: TextOverflow.ellipsis),
-                    const SizedBox(height: 4),
-                    if (party.category.isNotEmpty)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(color: JoynColors.chipBackground, borderRadius: BorderRadius.circular(20)),
-                        child: Text(party.category, style: JoynTypography.caption.copyWith(fontSize: 10.5, fontWeight: FontWeight.w600, color: JoynColors.secondaryText)),
-                      ),
-                    const SizedBox(height: 4),
-                    if (party.contactNumber.isNotEmpty)
-                      Row(
-                        children: [
-                          const Icon(Icons.phone_outlined, size: 12, color: JoynColors.secondaryText),
-                          const SizedBox(width: 4),
-                          Text(party.contactNumber, style: JoynTypography.caption.copyWith(fontSize: 11.5, color: JoynColors.secondaryText)),
-                        ],
-                      ),
-                  ],
-                ),
-              ),
-              Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+              Row(
                 children: [
-                  InkWell(
-                    onTap: () => _editParty(party),
-                    borderRadius: BorderRadius.circular(8),
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(color: JoynColors.primary.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(8)),
-                      child: const Icon(Icons.edit_outlined, size: 18, color: JoynColors.primary),
+                  _buildPartyAvatar(party),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                party.name,
+                                style: JoynTypography.bodyLarge.copyWith(fontSize: 15, fontWeight: FontWeight.w700, color: JoynColors.primary),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            if (party.priorityLevel == 'high')
+                              Container(
+                                margin: const EdgeInsets.only(left: 6),
+                                width: 8,
+                                height: 8,
+                                decoration: const BoxDecoration(shape: BoxShape.circle, color: JoynColors.error),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        if (party.category.isNotEmpty)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(color: JoynColors.chipBackground, borderRadius: BorderRadius.circular(20)),
+                            child: Text(party.category, style: JoynTypography.caption.copyWith(fontSize: 10.5, fontWeight: FontWeight.w600, color: JoynColors.secondaryText)),
+                          ),
+                        const SizedBox(height: 4),
+                        if (party.contactNumber.isNotEmpty)
+                          Row(
+                            children: [
+                              const Icon(Icons.phone_outlined, size: 12, color: JoynColors.secondaryText),
+                              const SizedBox(width: 4),
+                              Text(party.contactNumber, style: JoynTypography.caption.copyWith(fontSize: 11.5, color: JoynColors.secondaryText)),
+                            ],
+                          ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  InkWell(
-                    onTap: () => _deleteParty(party),
-                    borderRadius: BorderRadius.circular(8),
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(color: JoynColors.error.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(8)),
-                      child: const Icon(Icons.delete_outline_rounded, size: 18, color: JoynColors.error),
-                    ),
+                  // Edit and Delete icons in a row
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      InkWell(
+                        onTap: () => _editParty(party),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(color: JoynColors.primary.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(8)),
+                          child: const Icon(Icons.edit_outlined, size: 18, color: JoynColors.primary),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      InkWell(
+                        onTap: () => _deleteParty(party),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(color: JoynColors.error.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(8)),
+                          child: const Icon(Icons.delete_outline_rounded, size: 18, color: JoynColors.error),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
+              ),
+              const SizedBox(height: 12),
+              // Amount below
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: JoynColors.chipBackground,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    _buildBalanceLabel(party),
+                  ],
+                ),
               ),
             ],
           ),
@@ -479,6 +704,8 @@ class _PartyListScreenState extends State<PartyListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final hasActiveFilters = _filterCategory != null || _filterPartyType != null || _filterPriority != null || _filterCity != null;
+
     return Scaffold(
       backgroundColor: JoynColors.background,
       appBar: AppBar(
@@ -517,7 +744,6 @@ class _PartyListScreenState extends State<PartyListScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Search + Sort + Filter row
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
               child: Row(
@@ -552,25 +778,46 @@ class _PartyListScreenState extends State<PartyListScreen> {
                   const SizedBox(width: 8),
                   _buildIconButton(Icons.swap_vert_rounded, _showSortSheet),
                   const SizedBox(width: 8),
-                  _buildIconButton(Icons.filter_list_rounded, _showFilterSheet, badge: _filterCategory != null),
+                  _buildIconButton(Icons.filter_list_rounded, _showFilterSheet, badge: hasActiveFilters),
                 ],
               ),
             ),
 
-            if (_filterCategory != null)
+            if (hasActiveFilters)
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Chip(
-                    label: Text('Category: $_filterCategory'),
-                    onDeleted: () => setState(() => _filterCategory = null),
-                    backgroundColor: JoynColors.chipBackground,
-                  ),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    if (_filterCategory != null)
+                      Chip(
+                        label: Text('Category: $_filterCategory'),
+                        onDeleted: () => setState(() => _filterCategory = null),
+                        backgroundColor: JoynColors.chipBackground,
+                      ),
+                    if (_filterPartyType != null)
+                      Chip(
+                        label: Text('Type: ${_filterPartyType![0].toUpperCase()}${_filterPartyType!.substring(1)}'),
+                        onDeleted: () => setState(() => _filterPartyType = null),
+                        backgroundColor: JoynColors.chipBackground,
+                      ),
+                    if (_filterPriority != null)
+                      Chip(
+                        label: Text('Priority: ${_filterPriority![0].toUpperCase()}${_filterPriority!.substring(1)}'),
+                        onDeleted: () => setState(() => _filterPriority = null),
+                        backgroundColor: JoynColors.chipBackground,
+                      ),
+                    if (_filterCity != null)
+                      Chip(
+                        label: Text('City: $_filterCity'),
+                        onDeleted: () => setState(() => _filterCity = null),
+                        backgroundColor: JoynColors.chipBackground,
+                      ),
+                  ],
                 ),
               ),
 
-            // Parties List
             Expanded(
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator(color: JoynColors.primary))
@@ -603,27 +850,56 @@ class _PartyListScreenState extends State<PartyListScreen> {
               ),
             ),
 
-            // Bottom action bar
+            // ============================================================
+            // NEW: 2x2 grid — Take Payment / Add Sale (existing) plus
+            // Add Purchase / Make Payment (new).
+            // ============================================================
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-              child: Row(
+              child: Column(
                 children: [
-                  Expanded(
-                    child: _buildBottomActionButton(
-                      label: 'Take Payment',
-                      icon: Icons.call_received_rounded,
-                      color: JoynColors.success,
-                      onTap: _openTakePaymentGeneric,
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildBottomActionButton(
+                          label: 'Take Payment',
+                          icon: Icons.call_received_rounded,
+                          color: JoynColors.success,
+                          onTap: _openTakePaymentGeneric,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildBottomActionButton(
+                          label: 'Add Sale',
+                          icon: Icons.point_of_sale_rounded,
+                          color: JoynColors.primary,
+                          onTap: _openAddSaleGeneric,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildBottomActionButton(
-                      label: 'Add Sale',
-                      icon: Icons.point_of_sale_rounded,
-                      color: JoynColors.primary,
-                      onTap: _openAddSaleGeneric,
-                    ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildBottomActionButton(
+                          label: 'Add Purchase',
+                          icon: Icons.shopping_cart_checkout_rounded,
+                          color: JoynColors.primary,
+                          onTap: _openAddPurchaseGeneric,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildBottomActionButton(
+                          label: 'Make Payment',
+                          icon: Icons.call_made_rounded,
+                          color: JoynColors.error,
+                          onTap: _openMakePaymentGeneric,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),

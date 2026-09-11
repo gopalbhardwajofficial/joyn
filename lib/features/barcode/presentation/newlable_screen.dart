@@ -49,12 +49,10 @@ class _SizePreset {
 }
 
 const _kPresets = <_SizePreset>[
-  _SizePreset('100×150\nmm', 100, 150, false),
-  _SizePreset('100×100\nmm', 100, 100, true),
-  _SizePreset('30×55\nmm', 30, 55, false),
-  _SizePreset('50×50\nmm', 50, 50, true),
-  _SizePreset('40×40\nmm', 40, 40, false),
-  _SizePreset('40×30\nmm', 40, 30, false),
+  _SizePreset('50×30\nmm', 50, 30, false),
+  _SizePreset('50×15\nmm', 50, 15, false),
+  _SizePreset('50×50\nmm', 50, 50, false),
+  _SizePreset('50×25\nmm', 50, 25, false),
 ];
 
 class NewLabelSizeScreen extends StatefulWidget {

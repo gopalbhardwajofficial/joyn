@@ -44,7 +44,8 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../../core/theme/joyn_colors.dart';
 import '../../../core/theme/joyn_typography.dart';
-import '../../orders/models/order_item_model.dart';
+// ✅ FIXED: now imports the single source of truth for OrderItemModel
+import '../../orders/models/sales_models.dart';
 
 // ============================================================
 // DATA MODEL — everything the preview needs, decoupled from
@@ -70,7 +71,7 @@ class InvoicePreviewData {
   final String date;
   final String customerName;
   final String customerPhone;
-  final List<OrderItemModel> items;
+  final List<OrderItemModel> items; // now uses the same model as everywhere else
   final double totalAmount;
   final double receivedAmount;
   final String businessName;
@@ -495,8 +496,8 @@ class _ItemsTable extends StatelessWidget {
               _cell(e.value.itemName),
               _cell(e.value.category),
               _cell('${e.value.qty}'),
-              _cell(e.value.price.toStringAsFixed(2)),
-              _cell(e.value.amount.toStringAsFixed(2)),
+              _cell(e.value.unitPrice.toStringAsFixed(2)), // ✅ uses unitPrice
+              _cell(e.value.subtotal.toStringAsFixed(2)), // ✅ uses subtotal (qty * unitPrice)
             ]),
           ),
         TableRow(children: [

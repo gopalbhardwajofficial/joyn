@@ -24,6 +24,11 @@ class SalesRepository {
     await tryAlter("ALTER TABLE parties ADD COLUMN openingBalance REAL DEFAULT 0");
     await tryAlter("ALTER TABLE parties ADD COLUMN balanceType TEXT DEFAULT 'toReceive'");
     await tryAlter("ALTER TABLE parties ADD COLUMN creditLimit REAL");
+    await tryAlter("ALTER TABLE parties ADD COLUMN city TEXT DEFAULT ''");
+    await tryAlter("ALTER TABLE parties ADD COLUMN partyType TEXT DEFAULT 'customer'");
+    await tryAlter("ALTER TABLE parties ADD COLUMN priorityLevel TEXT DEFAULT 'medium'");
+    await tryAlter("ALTER TABLE parties ADD COLUMN photoPath TEXT DEFAULT ''");
+    await tryAlter("ALTER TABLE parties ADD COLUMN avatarIndex INTEGER");
 
     await tryAlter("ALTER TABLE items ADD COLUMN qty INTEGER DEFAULT 0");
     await tryAlter("ALTER TABLE items ADD COLUMN hsnSac TEXT DEFAULT ''");
@@ -58,6 +63,42 @@ class SalesRepository {
       )
     ''');
 
+    // ======= FIX: Ensure categories table exists and has defaults =======
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS categories (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT UNIQUE NOT NULL,
+        createdAt TEXT
+      )
+    ''');
+
+    final catCount = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM categories')) ?? 0;
+    if (catCount == 0) {
+      final now = DateTime.now().toIso8601String();
+      final defaults = ['Grocery', 'Electronics', 'Garments', 'Stationery', 'Other'];
+      for (final c in defaults) {
+        await db.insert('categories', {'name': c, 'createdAt': now}, conflictAlgorithm: ConflictAlgorithm.ignore);
+      }
+    }
+
+    // ======= FIX: Ensure locations table exists and has defaults =======
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS locations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT UNIQUE NOT NULL,
+        createdAt TEXT
+      )
+    ''');
+
+    final locCount = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM locations')) ?? 0;
+    if (locCount == 0) {
+      final now = DateTime.now().toIso8601String();
+      final defaults = ['Select Location', 'Rack A1', 'Rack A2', 'Warehouse 1', 'Store Front'];
+      for (final l in defaults) {
+        await db.insert('locations', {'name': l, 'createdAt': now}, conflictAlgorithm: ConflictAlgorithm.ignore);
+      }
+    }
+
     _migrated = true;
     return db;
   }
@@ -83,6 +124,15 @@ class SalesRepository {
   Future<void> deleteParty(String id) async {
     final db = await _readyDb();
     await db.delete('parties', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<Map<String, Map<String, dynamic>>> getAllPartyBalances() async {
+    final parties = await getParties();
+    final result = <String, Map<String, dynamic>>{};
+    for (final p in parties) {
+      result[p.id] = await getPartyBalance(p.id);
+    }
+    return result;
   }
 
   // ============ ITEMS ============
@@ -417,5 +467,47 @@ class SalesRepository {
   String _getMonthName(int month) {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     return months[month - 1];
+  }
+
+  // ============ CATEGORIES & LOCATIONS ============
+
+  Future<List<String>> getCategories() async {
+    final db = await _readyDb();
+    final maps = await db.query('categories', orderBy: 'name ASC');
+    return maps.map((m) => m['name'] as String).toList();
+  }
+
+  Future<void> insertCategory(String name) async {
+    final db = await _readyDb();
+    await db.insert(
+      'categories',
+      {'name': name, 'createdAt': DateTime.now().toIso8601String()},
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+  }
+
+  Future<void> deleteCategory(String name) async {
+    final db = await _readyDb();
+    await db.delete('categories', where: 'name = ?', whereArgs: [name]);
+  }
+
+  Future<List<String>> getLocations() async {
+    final db = await _readyDb();
+    final maps = await db.query('locations', orderBy: 'name ASC');
+    return maps.map((m) => m['name'] as String).toList();
+  }
+
+  Future<void> insertLocation(String name) async {
+    final db = await _readyDb();
+    await db.insert(
+      'locations',
+      {'name': name, 'createdAt': DateTime.now().toIso8601String()},
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+  }
+
+  Future<void> deleteLocation(String name) async {
+    final db = await _readyDb();
+    await db.delete('locations', where: 'name = ?', whereArgs: [name]);
   }
 }

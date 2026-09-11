@@ -1,9 +1,11 @@
+// lib/features/orders/models/sales_models.dart
+
 import 'dart:convert';
-import 'package:flutter/material.dart';
 
 enum PriceTaxMode { withTax, withoutTax }
 enum DiscountType { percentage, value }
 
+// ==================== PartyModel ====================
 class PartyModel {
   final String id;
   final String name;
@@ -11,6 +13,11 @@ class PartyModel {
   final String contactNumber;
   final String email;
   final String address;
+  final String city;
+  final String partyType;
+  final String priorityLevel;
+  final String photoPath;
+  final int? avatarIndex;
   final DateTime createdAt;
   final double openingBalance;
   final String balanceType;
@@ -23,6 +30,11 @@ class PartyModel {
     this.contactNumber = '',
     this.email = '',
     this.address = '',
+    this.city = '',
+    this.partyType = 'customer',
+    this.priorityLevel = 'medium',
+    this.photoPath = '',
+    this.avatarIndex,
     required this.createdAt,
     this.openingBalance = 0,
     this.balanceType = 'toReceive',
@@ -35,6 +47,11 @@ class PartyModel {
     String? contactNumber,
     String? email,
     String? address,
+    String? city,
+    String? partyType,
+    String? priorityLevel,
+    String? photoPath,
+    int? avatarIndex,
     double? openingBalance,
     String? balanceType,
     double? creditLimit,
@@ -46,6 +63,11 @@ class PartyModel {
       contactNumber: contactNumber ?? this.contactNumber,
       email: email ?? this.email,
       address: address ?? this.address,
+      city: city ?? this.city,
+      partyType: partyType ?? this.partyType,
+      priorityLevel: priorityLevel ?? this.priorityLevel,
+      photoPath: photoPath ?? this.photoPath,
+      avatarIndex: avatarIndex ?? this.avatarIndex,
       createdAt: createdAt,
       openingBalance: openingBalance ?? this.openingBalance,
       balanceType: balanceType ?? this.balanceType,
@@ -61,6 +83,11 @@ class PartyModel {
       'contactNumber': contactNumber,
       'email': email,
       'address': address,
+      'city': city,
+      'partyType': partyType,
+      'priorityLevel': priorityLevel,
+      'photoPath': photoPath,
+      'avatarIndex': avatarIndex,
       'createdAt': createdAt.toIso8601String(),
       'openingBalance': openingBalance,
       'balanceType': balanceType,
@@ -76,6 +103,11 @@ class PartyModel {
       contactNumber: map['contactNumber'] as String? ?? '',
       email: map['email'] as String? ?? '',
       address: map['address'] as String? ?? '',
+      city: map['city'] as String? ?? '',
+      partyType: map['partyType'] as String? ?? 'customer',
+      priorityLevel: map['priorityLevel'] as String? ?? 'medium',
+      photoPath: map['photoPath'] as String? ?? '',
+      avatarIndex: (map['avatarIndex'] as num?)?.toInt(),
       createdAt: DateTime.tryParse(map['createdAt'] as String? ?? '') ?? DateTime.now(),
       openingBalance: (map['openingBalance'] as num?)?.toDouble() ?? 0,
       balanceType: map['balanceType'] as String? ?? 'toReceive',
@@ -87,6 +119,7 @@ class PartyModel {
   factory PartyModel.fromJson(Map<String, dynamic> json) => PartyModel.fromDb(json);
 }
 
+// ==================== InventoryItemModel ====================
 class InventoryItemModel {
   final String id;
   final String name;
@@ -99,7 +132,6 @@ class InventoryItemModel {
   final String barcodeMode;
   final String photoPath;
 
-  // Pricing
   final double purchasePrice;
   final double sellingPrice;
   final PriceTaxMode salePriceTaxMode;
@@ -233,6 +265,94 @@ class InventoryItemModel {
   factory InventoryItemModel.fromJson(Map<String, dynamic> json) => InventoryItemModel.fromDb(json);
 }
 
+// ==================== OrderItemModel – FIXED ====================
+class OrderItemModel {
+  final String id;
+  final String itemName;
+  final String category;
+  final double unitPrice;
+  final int qty;
+  final double discountAmount;
+  final double taxAmount;
+  final double taxRate;
+  final bool taxInclusive;
+  final String unit;
+
+  const OrderItemModel({
+    required this.id,
+    required this.itemName,
+    this.category = '',
+    this.unitPrice = 0,
+    this.qty = 1,
+    this.discountAmount = 0,
+    this.taxAmount = 0,
+    this.taxRate = 0,
+    this.taxInclusive = false,
+    this.unit = '',
+  });
+
+  double get subtotal => unitPrice * qty;
+  double get total => subtotal - discountAmount + taxAmount;
+  double get amount => total;
+
+  OrderItemModel copyWith({
+    String? id,
+    String? itemName,
+    String? category,
+    double? unitPrice,
+    int? qty,
+    double? discountAmount,
+    double? taxAmount,
+    double? taxRate,
+    bool? taxInclusive,
+    String? unit,
+  }) {
+    return OrderItemModel(
+      id: id ?? this.id,
+      itemName: itemName ?? this.itemName,
+      category: category ?? this.category,
+      unitPrice: unitPrice ?? this.unitPrice,
+      qty: qty ?? this.qty,
+      discountAmount: discountAmount ?? this.discountAmount,
+      taxAmount: taxAmount ?? this.taxAmount,
+      taxRate: taxRate ?? this.taxRate,
+      taxInclusive: taxInclusive ?? this.taxInclusive,
+      unit: unit ?? this.unit,
+    );
+  }
+
+  // ✅ JSON methods matching the stored format in SaleOrderModel / PurchaseOrderModel
+  Map<String, dynamic> toJson() => {
+    'name': itemName,
+    'category': category,
+    'unitPrice': unitPrice,
+    'qty': qty,
+    'discountAmount': discountAmount,
+    'taxAmount': taxAmount,
+    'taxRate': taxRate,
+    'taxInclusive': taxInclusive ? 1 : 0,
+    'unit': unit,
+  };
+
+  factory OrderItemModel.fromJson(Map<String, dynamic> json) {
+    return OrderItemModel(
+      id: json['id'] as String? ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      itemName: (json['name'] ?? '').toString(),
+      category: (json['category'] ?? '').toString(),
+      unitPrice: (json['unitPrice'] as num?)?.toDouble() ?? 0,
+      qty: (json['qty'] as num?)?.toInt() ?? 1,
+      discountAmount: (json['discountAmount'] as num?)?.toDouble() ?? 0,
+      taxAmount: (json['taxAmount'] as num?)?.toDouble() ?? 0,
+      taxRate: (json['taxRate'] as num?)?.toDouble() ?? 0,
+      taxInclusive: (json['taxInclusive'] is int)
+          ? (json['taxInclusive'] as int) == 1
+          : (json['taxInclusive'] as bool? ?? false),
+      unit: (json['unit'] ?? '').toString(),
+    );
+  }
+}
+
+// ==================== SaleOrderModel ====================
 class SaleOrderModel {
   final String id;
   final int invoiceNo;
@@ -350,6 +470,7 @@ class SaleOrderModel {
   }
 }
 
+// ==================== PaymentModel ====================
 class PaymentModel {
   final String id;
   final int receiptNo;
@@ -406,6 +527,7 @@ class PaymentModel {
   }
 }
 
+// ==================== PurchaseOrderModel ====================
 class PurchaseOrderModel {
   final String id;
   final int orderNo;

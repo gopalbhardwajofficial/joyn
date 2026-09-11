@@ -174,13 +174,8 @@ class _AddNewItemScreenState extends State<AddNewItemScreen> {
     'Box', 'Dozen', 'Meter', 'Bag', 'Packet', 'Other',
   ];
 
-  final List<String> _categories = [
-    'Grocery', 'Electronics', 'Garments', 'Stationery', 'Other',
-  ];
-
-  final List<String> _locations = [
-    'Select Location', 'Rack A1', 'Rack A2', 'Warehouse 1', 'Store Front',
-  ];
+  List<String> _categories = [];
+  List<String> _locations = [];
 
   PricingTab _pricingTab = PricingTab.selling;
   final _buyingPriceController = TextEditingController();
@@ -216,13 +211,40 @@ class _AddNewItemScreenState extends State<AddNewItemScreen> {
     _sellingPriceController.addListener(_onPriceChanged);
     _qtyController.addListener(_onQtyChanged);
 
-    // Prefill if editing
-    if (_isEditMode) {
-      _prefillFromExistingItem();
+    _loadCategoriesAndLocations();
+  }
+
+  Future<void> _loadCategoriesAndLocations() async {
+    try {
+      final cats = await _salesRepository.getCategories();
+      final locs = await _salesRepository.getLocations();
+      if (!mounted) return;
+
+      _categories = cats.isNotEmpty ? cats : ['Grocery', 'Electronics', 'Garments', 'Stationery', 'Other'];
+      _locations = locs.isNotEmpty ? locs : ['Select Location', 'Rack A1', 'Rack A2', 'Warehouse 1', 'Store Front'];
+
+      if (_isEditMode) {
+        await _prefillFromExistingItem();
+      }
+
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (e) {
+      debugPrint('Error loading categories/locations: $e');
+      if (!mounted) return;
+      setState(() {
+        _categories = ['Grocery', 'Electronics', 'Garments', 'Stationery', 'Other'];
+        _locations = ['Select Location', 'Rack A1', 'Rack A2', 'Warehouse 1', 'Store Front'];
+      });
+      if (_isEditMode) {
+        await _prefillFromExistingItem();
+        if (mounted) setState(() {});
+      }
     }
   }
 
-  void _prefillFromExistingItem() {
+  Future<void> _prefillFromExistingItem() async {
     final item = widget.existingItem;
     if (item == null) return;
 
@@ -233,18 +255,23 @@ class _AddNewItemScreenState extends State<AddNewItemScreen> {
     _sellingPriceController.text = item.sellingPrice.toString();
     _barcodeController.text = item.barcode;
     _selectedUnit = item.unit;
-    _selectedCategory = item.category.isNotEmpty ? item.category : null;
-    _selectedLocation = item.location.isNotEmpty ? item.location : 'Select Location';
 
-    // Add category to list if not exists
+    // Load existing photo
+    _photoPath = item.photoPath.isNotEmpty ? item.photoPath : null;
+
+    // Ensure category exists in DB and list
     if (item.category.isNotEmpty && !_categories.contains(item.category)) {
+      await _salesRepository.insertCategory(item.category);
       _categories.add(item.category);
     }
+    _selectedCategory = item.category.isNotEmpty ? item.category : null;
 
-    // Add location to list if not exists
+    // Ensure location exists in DB and list
     if (item.location.isNotEmpty && !_locations.contains(item.location)) {
+      await _salesRepository.insertLocation(item.location);
       _locations.add(item.location);
     }
+    _selectedLocation = item.location.isNotEmpty ? item.location : 'Select Location';
 
     // Set tax modes
     _buyingTaxMode = item.purchasePriceTaxMode == PriceTaxMode.withTax
@@ -450,6 +477,8 @@ class _AddNewItemScreenState extends State<AddNewItemScreen> {
       if (!mounted) return;
 
       if (result != null && result.isNotEmpty) {
+        await _salesRepository.insertLocation(result);
+        if (!mounted) return;
         setState(() {
           if (!_locations.contains(result)) {
             _locations.add(result);
@@ -509,6 +538,8 @@ class _AddNewItemScreenState extends State<AddNewItemScreen> {
       ),
     );
     if (confirmed == true && mounted) {
+      await _salesRepository.deleteLocation(location);
+      if (!mounted) return;
       setState(() {
         _locations.remove(location);
         if (_selectedLocation == location) _selectedLocation = 'Select Location';
@@ -589,6 +620,8 @@ class _AddNewItemScreenState extends State<AddNewItemScreen> {
       if (!mounted) return;
 
       if (result != null && result.isNotEmpty) {
+        await _salesRepository.insertCategory(result);
+        if (!mounted) return;
         setState(() {
           if (!_categories.contains(result)) {
             _categories.add(result);
@@ -648,6 +681,8 @@ class _AddNewItemScreenState extends State<AddNewItemScreen> {
       ),
     );
     if (confirmed == true && mounted) {
+      await _salesRepository.deleteCategory(category);
+      if (!mounted) return;
       setState(() {
         _categories.remove(category);
         if (_selectedCategory == category) _selectedCategory = null;
@@ -1108,6 +1143,7 @@ class _AddNewItemScreenState extends State<AddNewItemScreen> {
         taxRateLabel: _sellingTaxRate.label,
         taxRatePercent: _sellingTaxRate.rate,
         stock: int.tryParse(_qtyController.text.trim()) ?? 0,
+        photoPath: _photoPath ?? '',
         createdAt: widget.existingItem?.createdAt ?? DateTime.now(),
       );
 
@@ -1147,7 +1183,6 @@ class _AddNewItemScreenState extends State<AddNewItemScreen> {
         ),
       );
 
-      // Pop with success result
       Navigator.of(context).pop(true);
     } catch (e) {
       debugPrint('Error saving item: $e');
@@ -1229,6 +1264,8 @@ class _AddNewItemScreenState extends State<AddNewItemScreen> {
     );
   }
 
+  // ============ UI BUILDERS ============
+
   Widget _buildSectionHeader(int number, String title, IconData icon) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1264,6 +1301,7 @@ class _AddNewItemScreenState extends State<AddNewItemScreen> {
     );
   }
 
+  // ============ UPDATED ITEM DETAILS CARD ============
   Widget _buildItemDetailsCard() {
     return Container(
       width: double.infinity,
@@ -1277,13 +1315,11 @@ class _AddNewItemScreenState extends State<AddNewItemScreen> {
       child: Column(
         children: [
           _buildFormField(label: 'Item Name *', hintText: 'Enter item name', controller: _itemNameController, icon: Icons.inventory_2_outlined),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
           _buildFormField(label: 'SKU', controller: _skuController, hintText: 'Enter SKU', icon: Icons.inventory_2_outlined),
-          const SizedBox(height: 14),
-          _buildFormField(label: 'Qty', hintText: '0', controller: _qtyController, keyboardType: TextInputType.number, icon: Icons.numbers_rounded),
-          const SizedBox(height: 14),
-          _buildUnitDropdown(),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
+          _buildQtyUnitRow(),
+          const SizedBox(height: 12),
           _buildSecondaryUnitSection(),
           const SizedBox(height: 14),
           _buildCategoryPickerField(),
@@ -1296,42 +1332,74 @@ class _AddNewItemScreenState extends State<AddNewItemScreen> {
     );
   }
 
-  Widget _buildUnitDropdown() {
+  // ============ NEW COMPACT QTY + UNIT ROW ============
+  Widget _buildQtyUnitRow() {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: _buildCompactTextField(
+            label: 'Qty',
+            hintText: '0',
+            controller: _qtyController,
+            keyboardType: TextInputType.number,
+            icon: Icons.numbers_rounded,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _buildCompactUnitDropdown(
+            label: 'Unit',
+            value: _selectedUnit,
+            icon: Icons.straighten_rounded,
+            onChanged: (val) {
+              HapticFeedback.selectionClick();
+              setState(() => _selectedUnit = val ?? _selectedUnit);
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCompactTextField({
+    required String label,
+    required String hintText,
+    required TextEditingController controller,
+    TextInputType keyboardType = TextInputType.text,
+    IconData? icon,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Unit', style: JoynTypography.bodyMedium.copyWith(fontSize: 13, fontWeight: FontWeight.w700, color: JoynColors.secondaryText)),
-        const SizedBox(height: 6),
+        Text(label, style: JoynTypography.bodyMedium.copyWith(fontSize: 11.5, fontWeight: FontWeight.w700, color: JoynColors.secondaryText)),
+        const SizedBox(height: 4),
         Container(
-          height: 54,
-          padding: const EdgeInsets.symmetric(horizontal: 14),
+          height: 44,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: JoynColors.border, width: 1.2),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: JoynColors.border, width: 1.1),
             boxShadow: _Premium.fieldShadow,
           ),
           child: Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(color: JoynColors.primary.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10)),
-                child: const Icon(Icons.straighten_rounded, size: 16, color: JoynColors.primary),
-              ),
-              const SizedBox(width: 10),
+              if (icon != null) ...[
+                Icon(icon, size: 14, color: JoynColors.primary),
+                const SizedBox(width: 6),
+              ],
               Expanded(
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: _selectedUnit,
-                    isExpanded: true,
-                    icon: const Icon(Icons.keyboard_arrow_down_rounded, color: JoynColors.primary, size: 20),
-                    style: JoynTypography.bodyLarge.copyWith(fontSize: 15, color: JoynColors.primary),
-                    borderRadius: BorderRadius.circular(16),
-                    onChanged: (val) {
-                      HapticFeedback.selectionClick();
-                      setState(() => _selectedUnit = val ?? _selectedUnit);
-                    },
-                    items: _units.map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
+                child: TextField(
+                  controller: controller,
+                  keyboardType: keyboardType,
+                  style: JoynTypography.bodyLarge.copyWith(fontSize: 13.5, fontWeight: FontWeight.w600),
+                  decoration: InputDecoration(
+                    hintText: hintText,
+                    hintStyle: JoynTypography.bodyLarge.copyWith(color: JoynColors.secondaryText.withValues(alpha: 0.5), fontSize: 13, fontWeight: FontWeight.w500),
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
                   ),
                 ),
               ),
@@ -1342,6 +1410,51 @@ class _AddNewItemScreenState extends State<AddNewItemScreen> {
     );
   }
 
+  Widget _buildCompactUnitDropdown({
+    required String label,
+    required String value,
+    required IconData icon,
+    required ValueChanged<String?> onChanged,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: JoynTypography.bodyMedium.copyWith(fontSize: 11.5, fontWeight: FontWeight.w700, color: JoynColors.secondaryText)),
+        const SizedBox(height: 4),
+        Container(
+          height: 44,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: JoynColors.border, width: 1.1),
+            boxShadow: _Premium.fieldShadow,
+          ),
+          child: Row(
+            children: [
+              Icon(icon, size: 14, color: JoynColors.primary),
+              const SizedBox(width: 6),
+              Expanded(
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: value,
+                    isExpanded: true,
+                    icon: const Icon(Icons.keyboard_arrow_down_rounded, color: JoynColors.primary, size: 18),
+                    style: JoynTypography.bodyLarge.copyWith(fontSize: 13, color: JoynColors.primary),
+                    borderRadius: BorderRadius.circular(12),
+                    onChanged: onChanged,
+                    items: _units.map((u) => DropdownMenuItem(value: u, child: Text(u, overflow: TextOverflow.ellipsis))).toList(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ============ UPDATED COMPACT SECONDARY UNIT ============
   Widget _buildSecondaryUnitSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1355,117 +1468,56 @@ class _AddNewItemScreenState extends State<AddNewItemScreen> {
                 children: [
                   Text(
                     'Secondary Unit',
-                    style: JoynTypography.bodyMedium.copyWith(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: JoynColors.secondaryText,
-                    ),
+                    style: JoynTypography.bodyMedium.copyWith(fontSize: 12.5, fontWeight: FontWeight.w700, color: JoynColors.secondaryText),
                   ),
-                  const SizedBox(height: 2),
                   Text(
-                    _primaryUnitOnly
-                        ? 'Only primary unit will be used'
-                        : 'Track item in a second unit too',
-                    style: JoynTypography.caption.copyWith(
-                      fontSize: 11.5,
-                      color: JoynColors.secondaryText,
-                    ),
+                    _primaryUnitOnly ? 'Only primary unit will be used' : 'Track item in a second unit too',
+                    style: JoynTypography.caption.copyWith(fontSize: 10.5, color: JoynColors.secondaryText),
                   ),
                 ],
               ),
             ),
-            Switch.adaptive(
-              value: !_primaryUnitOnly,
-              onChanged: (enabled) {
-                HapticFeedback.selectionClick();
-                setState(() => _primaryUnitOnly = !enabled);
-              },
-              activeTrackColor: _AccentColors.togglePurple,
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            Transform.scale(
+              scale: 0.85,
+              child: Switch.adaptive(
+                value: !_primaryUnitOnly,
+                onChanged: (enabled) {
+                  HapticFeedback.selectionClick();
+                  setState(() => _primaryUnitOnly = !enabled);
+                },
+                activeTrackColor: _AccentColors.togglePurple,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
             ),
           ],
         ),
         if (!_primaryUnitOnly) ...[
-          const SizedBox(height: 10),
-          Container(
-            height: 54,
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: JoynColors.border, width: 1.2),
-              boxShadow: _Premium.fieldShadow,
-            ),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: JoynColors.primary.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(Icons.straighten_rounded, size: 16, color: JoynColors.primary),
+          const SizedBox(height: 8),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: _buildCompactUnitDropdown(
+                  label: 'Unit',
+                  value: _selectedSecondaryUnit,
+                  icon: Icons.straighten_rounded,
+                  onChanged: (val) {
+                    HapticFeedback.selectionClick();
+                    setState(() => _selectedSecondaryUnit = val ?? _selectedSecondaryUnit);
+                  },
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: _selectedSecondaryUnit,
-                      isExpanded: true,
-                      icon: const Icon(Icons.keyboard_arrow_down_rounded, color: JoynColors.primary, size: 20),
-                      style: JoynTypography.bodyLarge.copyWith(fontSize: 15, color: JoynColors.primary),
-                      borderRadius: BorderRadius.circular(16),
-                      onChanged: (val) {
-                        HapticFeedback.selectionClick();
-                        setState(() => _selectedSecondaryUnit = val ?? _selectedSecondaryUnit);
-                      },
-                      items: _units.map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
-                    ),
-                  ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _buildCompactTextField(
+                  label: 'Conversion',
+                  hintText: '1 $_selectedUnit = ?',
+                  controller: _secondaryConversionController,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  icon: Icons.swap_horiz_rounded,
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 10),
-          Container(
-            height: 54,
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: JoynColors.border, width: 1.2),
-              boxShadow: _Premium.fieldShadow,
-            ),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: JoynColors.primary.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(Icons.swap_horiz_rounded, size: 16, color: JoynColors.primary),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: TextField(
-                    controller: _secondaryConversionController,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    style: JoynTypography.bodyLarge.copyWith(fontSize: 15, fontWeight: FontWeight.w600),
-                    decoration: InputDecoration(
-                      hintText: '1 $_selectedUnit = ? $_selectedSecondaryUnit',
-                      hintStyle: JoynTypography.bodyLarge.copyWith(
-                        color: JoynColors.secondaryText.withValues(alpha: 0.6),
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      border: InputBorder.none,
-                      isDense: true,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ],
       ],
@@ -2420,6 +2472,7 @@ class _AddNewItemScreenState extends State<AddNewItemScreen> {
     );
   }
 
+  // Standard form field – kept for other fields
   Widget _buildFormField({
     required String label,
     required String hintText,

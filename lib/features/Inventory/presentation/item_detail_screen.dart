@@ -1,4 +1,5 @@
 // lib/features/Inventory/presentation/item_detail_screen.dart
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -134,27 +135,73 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
               ),
               child: Row(
                 children: [
+                  // Photo or Avatar
                   Container(
                     width: 60,
                     height: 60,
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          JoynColors.primary.withValues(alpha: 0.15),
-                          JoynColors.primary.withValues(alpha: 0.25),
-                        ],
-                      ),
                       borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.08),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
                     ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      _item.name.isNotEmpty ? _item.name[0].toUpperCase() : '?',
-                      style: JoynTypography.titleMedium.copyWith(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w800,
-                        color: JoynColors.primary,
+                    child: _item.photoPath.isNotEmpty
+                        ? ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: Image.file(
+                        File(_item.photoPath),
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          // Fallback to letter if image fails
+                          return Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  JoynColors.primary.withValues(alpha: 0.15),
+                                  JoynColors.primary.withValues(alpha: 0.25),
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(
+                              _item.name.isNotEmpty ? _item.name[0].toUpperCase() : '?',
+                              style: JoynTypography.titleMedium.copyWith(
+                                fontSize: 24,
+                                fontWeight: FontWeight.w800,
+                                color: JoynColors.primary,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    )
+                        : Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            JoynColors.primary.withValues(alpha: 0.15),
+                            JoynColors.primary.withValues(alpha: 0.25),
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        _item.name.isNotEmpty ? _item.name[0].toUpperCase() : '?',
+                        style: JoynTypography.titleMedium.copyWith(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w800,
+                          color: JoynColors.primary,
+                        ),
                       ),
                     ),
                   ),

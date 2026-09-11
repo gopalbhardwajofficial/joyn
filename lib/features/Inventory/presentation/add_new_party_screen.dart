@@ -8,32 +8,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/theme/joyn_colors.dart';
 import '../../../core/theme/joyn_typography.dart';
 import '../../../core/widgets/joyn_button.dart';
-import '../../../core/widgets/custom_crop_dialog.dart'; // <-- adjust path to wherever you save custom_crop_dialog.dart
+import '../../../core/widgets/custom_crop_dialog.dart';
 import '../../orders/models/sales_models.dart';
 import '../../orders/data/sales_repository.dart';
-
+import 'package:joyn/features/Inventory/widgets/avatar.dart';
 enum PartySaveMode { mainParty, oneTimeCustomer }
 enum PartyType { customer, supplier, both }
 enum BalanceType { toReceive, toPay }
 enum PriorityLevel { high, medium, low }
-
-class _AvatarOption {
-  const _AvatarOption(this.emoji, this.gradient);
-  final String emoji;
-  final List<Color> gradient;
-}
-
-const List<_AvatarOption> _kAvatarOptions = [
-  _AvatarOption('👨‍💼', [Color(0xFFFFB88C), Color(0xFFFF7E5F)]),
-  _AvatarOption('👩‍💼', [Color(0xFFCFD9DF), Color(0xFF8B9FA8)]),
-  _AvatarOption('🎌', [Color(0xFFFFE29F), Color(0xFFFFA751)]),
-  _AvatarOption('💼', [Color(0xFFA1C4FD), Color(0xFF6E9BD9)]),
-  _AvatarOption('🦸', [Color(0xFFB3E5FC), Color(0xFF4FA3D1)]),
-  _AvatarOption('🧑‍💼', [Color(0xFFF8C6D8), Color(0xFFE187A6)]),
-  _AvatarOption('🐯', [Color(0xFFFFCB8E), Color(0xFFF57C3C)]),
-  _AvatarOption('🦉', [Color(0xFFD9C2FF), Color(0xFF8E6FCE)]),
-  _AvatarOption('🐰', [Color(0xFFFFD6E8), Color(0xFFF599C2)]),
-];
 
 const List<String> _kGstTypes = [
   'Unregistered/Consumer',
@@ -220,6 +202,27 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
         _balanceType = party.balanceType == 'toPay' ? BalanceType.toPay : BalanceType.toReceive;
         if (party.creditLimit != null) {
           _creditLimitController.text = party.creditLimit!.toStringAsFixed(0);
+        }
+
+        // ============================================================
+        // THE FIX: restore party type, priority, and the saved
+        // icon/photo so that opening Edit doesn't silently reset
+        // them back to the defaults (customer / medium / no avatar).
+        // ============================================================
+        _partyType = PartyType.values.firstWhere(
+              (t) => t.name == party.partyType,
+          orElse: () => PartyType.customer,
+        );
+        _priorityLevel = PriorityLevel.values.firstWhere(
+              (p) => p.name == party.priorityLevel,
+          orElse: () => PriorityLevel.medium,
+        );
+        if (party.photoPath.isNotEmpty && File(party.photoPath).existsSync()) {
+          _photoFile = File(party.photoPath);
+          _selectedAvatarIndex = null;
+        } else if (party.avatarIndex != null) {
+          _selectedAvatarIndex = party.avatarIndex;
+          _photoFile = null;
         }
       }
     } catch (_) {
@@ -412,7 +415,7 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
   }
 
   Widget _buildPhotoPicker() {
-    final avatar = _selectedAvatarIndex != null ? _kAvatarOptions[_selectedAvatarIndex!] : null;
+    final avatar = _selectedAvatarIndex != null ? kPartyAvatarOptions[_selectedAvatarIndex!] : null;
 
     return GestureDetector(
       onTap: _pickPhoto,
@@ -491,8 +494,8 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
               Wrap(
                 spacing: 14,
                 runSpacing: 14,
-                children: List.generate(_kAvatarOptions.length, (index) {
-                  final option = _kAvatarOptions[index];
+                children: List.generate(kPartyAvatarOptions.length, (index) {
+                  final option = kPartyAvatarOptions[index];
                   final selected = _selectedAvatarIndex == index;
                   return GestureDetector(
                     onTap: () {
@@ -849,6 +852,10 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
         // which created a DUPLICATE row. Now it calls updateParty()
         // with the ORIGINAL party's id, so editing a party updates
         // that same row in the local sqlite database.
+        //
+        // ALSO FIXED: partyType / priorityLevel / photoPath /
+        // avatarIndex were missing here entirely, so the selected
+        // icon (and type/priority) never made it into the saved row.
         // ============================================================
         final existing = widget.existingParty;
         final createdAt = (existing is PartyModel) ? existing.createdAt : DateTime.now();
@@ -860,6 +867,10 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
           contactNumber: _contactNumberController.text.trim(),
           email: _emailController.text.trim(),
           address: _billingAddressController.text.trim(),
+          partyType: _partyType.name,
+          priorityLevel: _priorityLevel.name,
+          photoPath: _photoFile?.path ?? '',
+          avatarIndex: _selectedAvatarIndex,
           createdAt: createdAt,
           openingBalance: openingBalanceValue,
           balanceType: _balanceType.name,
@@ -876,6 +887,10 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
           contactNumber: _contactNumberController.text.trim(),
           email: _emailController.text.trim(),
           address: _billingAddressController.text.trim(),
+          partyType: _partyType.name,
+          priorityLevel: _priorityLevel.name,
+          photoPath: _photoFile?.path ?? '',
+          avatarIndex: _selectedAvatarIndex,
           createdAt: DateTime.now(),
           openingBalance: openingBalanceValue,
           balanceType: _balanceType.name,

@@ -1,10 +1,11 @@
+// lib/features/orders/presentation/widgets/add_order_item_dialog.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../../core/theme/joyn_colors.dart';
 import '../../../../core/theme/joyn_typography.dart';
 import '../../../../core/constants/tax_rates.dart';
-import '../../models/order_item_model.dart';
-import '../../models/sales_models.dart';
+import '../../models/sales_models.dart';          // ✅ single source of truth
 import '../../data/sales_repository.dart';
 import '../../../Inventory/presentation/scan_code_screen.dart';
 import '../../../Inventory/presentation/add_new_item_screen.dart';
@@ -74,7 +75,7 @@ class SavedItemOption {
 }
 
 enum _DiscountMode { percent, rupee }
-enum _RateTaxMode { withTax, withoutTax }
+enum _TaxInclusiveMode { inclusive, exclusive }
 
 class AddOrderItemDialog extends StatefulWidget {
   const AddOrderItemDialog({
@@ -106,7 +107,8 @@ class _AddOrderItemDialogState extends State<AddOrderItemDialog> {
 
   bool _isOneTimeItem = false;
   String _selectedUnit = 'Select Unit';
-  _RateTaxMode _rateTaxMode = _RateTaxMode.withoutTax;
+  bool _applyTax = false;
+  _TaxInclusiveMode _taxInclusiveMode = _TaxInclusiveMode.exclusive;
   _DiscountMode _discountMode = _DiscountMode.percent;
   TaxRateOption? _selectedTaxRate;
 
@@ -130,10 +132,32 @@ class _AddOrderItemDialogState extends State<AddOrderItemDialog> {
     final existing = widget.existingItem;
     _nameController = TextEditingController(text: existing?.itemName ?? '');
     _categoryController = TextEditingController(text: existing?.category ?? '');
-    _priceController = TextEditingController(
-      text: existing != null && existing.price != 0 ? existing.price.toStringAsFixed(2) : '',
-    );
-    _qtyController = TextEditingController(text: existing != null ? existing.qty.toString() : '1');
+
+    if (existing != null) {
+      _priceController = TextEditingController(
+        text: existing.unitPrice.toStringAsFixed(2),
+      );
+      _qtyController = TextEditingController(text: existing.qty.toString());
+      _discountController.text = existing.discountAmount.toStringAsFixed(2);
+      if (existing.taxRate > 0) {
+        for (final rate in kTaxRateOptions) {
+          if (rate.rate == existing.taxRate) {
+            _selectedTaxRate = rate;
+            break;
+          }
+        }
+      }
+      _taxInclusiveMode = existing.taxInclusive
+          ? _TaxInclusiveMode.inclusive
+          : _TaxInclusiveMode.exclusive;
+      _applyTax = existing.taxRate > 0 || existing.taxAmount > 0;
+      _discountMode = _DiscountMode.rupee;
+      _isOneTimeItem = false;
+      if (existing.unit.isNotEmpty) _selectedUnit = existing.unit;
+    } else {
+      _priceController = TextEditingController(text: '');
+      _qtyController = TextEditingController(text: '1');
+    }
     _nameFocusNode.addListener(() {
       if (mounted) setState(() {});
     });
@@ -151,7 +175,7 @@ class _AddOrderItemDialogState extends State<AddOrderItemDialog> {
   }
 
   double get _price => double.tryParse(_priceController.text.trim()) ?? 0;
-  int get _qty => int.tryParse(_qtyController.text.trim()) ?? 0;
+  int get _qty => int.tryParse(_qtyController.text.trim()) ?? 1;
 
   List<SavedItemOption> get _filteredSavedItems {
     final query = _nameController.text.trim().toLowerCase();
@@ -163,14 +187,13 @@ class _AddOrderItemDialogState extends State<AddOrderItemDialog> {
 
   bool get _shouldShowSuggestions => !_isOneTimeItem && _nameFocusNode.hasFocus;
 
-  // Auto-fill item details
   void _selectSavedItem(SavedItemOption item) {
     HapticFeedback.selectionClick();
     setState(() {
       _nameController.text = item.name;
       _categoryController.text = item.category;
       _selectedUnit = item.unit;
-      _qtyController.text = '1'; // Default quantity
+      _qtyController.text = '1';
 
       if (widget.isPurchaseOrder) {
         _priceController.text = item.purchasePrice != 0
@@ -250,11 +273,9 @@ class _AddOrderItemDialogState extends State<AddOrderItemDialog> {
     );
   }
 
-  // Scan barcode and auto-fetch item
   Future<void> _scanBarcodeForItem() async {
     HapticFeedback.lightImpact();
 
-    // Show loading
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
@@ -272,17 +293,14 @@ class _AddOrderItemDialogState extends State<AddOrderItemDialog> {
       ),
     );
 
-    // Open scanner
     final scannedCode = await Navigator.of(context).push<String>(
       MaterialPageRoute(builder: (_) => const ScanCodeScreen()),
     );
 
     if (scannedCode == null || scannedCode.isEmpty || !mounted) return;
 
-    // Hide loading
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
 
-    // Search in local list first
     SavedItemOption? match;
     for (final item in _savedItems) {
       if (item.barcode.isNotEmpty && item.barcode == scannedCode) {
@@ -291,7 +309,6 @@ class _AddOrderItemDialogState extends State<AddOrderItemDialog> {
       }
     }
 
-    // Search in database
     if (match == null) {
       try {
         final dbItems = await _salesRepository.getItems();
@@ -307,7 +324,6 @@ class _AddOrderItemDialogState extends State<AddOrderItemDialog> {
     }
 
     if (match != null) {
-      // Item found - auto-fill all details
       _selectSavedItem(match);
       HapticFeedback.mediumImpact();
 
@@ -333,7 +349,6 @@ class _AddOrderItemDialogState extends State<AddOrderItemDialog> {
         ),
       );
     } else {
-      // Item not found
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('No item found for code "$scannedCode"'),
@@ -508,19 +523,30 @@ class _AddOrderItemDialogState extends State<AddOrderItemDialog> {
     final discountAmount = _discountMode == _DiscountMode.percent ? subtotal * (discountRaw / 100) : discountRaw;
     final taxableAmount = (subtotal - discountAmount).clamp(0, double.infinity).toDouble();
     final ratePercent = _selectedTaxRate?.rate ?? 0;
-    double taxAmount;
+
+    double taxAmount = 0;
     double total;
-    if (_rateTaxMode == _RateTaxMode.withoutTax) {
-      taxAmount = taxableAmount * (ratePercent / 100);
-      total = taxableAmount + taxAmount;
-    } else {
-      final base = taxableAmount / (1 + (ratePercent / 100));
-      taxAmount = taxableAmount - base;
+
+    if (!_applyTax) {
+      taxAmount = 0;
       total = taxableAmount;
+    } else {
+      if (_taxInclusiveMode == _TaxInclusiveMode.exclusive) {
+        taxAmount = taxableAmount * (ratePercent / 100);
+        total = taxableAmount + taxAmount;
+      } else {
+        final base = taxableAmount / (1 + (ratePercent / 100));
+        taxAmount = taxableAmount - base;
+        total = taxableAmount;
+      }
     }
+
     return (subtotal: subtotal, discountAmount: discountAmount, taxAmount: taxAmount, total: total);
   }
 
+  // ================================================================
+  //  UPDATED _submit() – now includes 'unit'
+  // ================================================================
   void _submit() {
     if (_nameController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -535,27 +561,22 @@ class _AddOrderItemDialogState extends State<AddOrderItemDialog> {
       return;
     }
     HapticFeedback.mediumImpact();
-    late final OrderItemModel item;
-    if (_isOneTimeItem) {
-      item = OrderItemModel(
-        id: widget.existingItem?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
-        itemName: _nameController.text.trim(),
-        category: '',
-        price: _price,
-        qty: 1,
-      );
-    } else {
-      final qty = _qty <= 0 ? 0 : _qty;
-      final totals = _calculateTotals();
-      final effectivePrice = totals.total / qty;
-      item = OrderItemModel(
-        id: widget.existingItem?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
-        itemName: _nameController.text.trim(),
-        category: _categoryController.text.trim(),
-        price: effectivePrice,
-        qty: qty,
-      );
-    }
+    final unitPrice = double.tryParse(_priceController.text.trim()) ?? 0;
+    final qty = int.tryParse(_qtyController.text.trim()) ?? 1;
+    final totals = _calculateTotals();
+
+    final item = OrderItemModel(
+      id: widget.existingItem?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      itemName: _nameController.text.trim(),
+      category: _isOneTimeItem ? '' : _categoryController.text.trim(),
+      unitPrice: unitPrice,
+      qty: _isOneTimeItem ? 1 : qty,
+      discountAmount: _isOneTimeItem ? 0 : totals.discountAmount,
+      taxAmount: _isOneTimeItem ? 0 : totals.taxAmount,
+      taxRate: _isOneTimeItem ? 0 : (_selectedTaxRate?.rate ?? 0),
+      taxInclusive: _isOneTimeItem ? false : (_taxInclusiveMode == _TaxInclusiveMode.inclusive),
+      unit: _selectedUnit != 'Select Unit' ? _selectedUnit : '', // NEW
+    );
     Navigator.pop(context, item);
   }
 
@@ -621,9 +642,13 @@ class _AddOrderItemDialogState extends State<AddOrderItemDialog> {
                   children: [
                     Expanded(child: _buildFormField(label: 'Rate (Price/Unit)', hintText: '0.00', controller: _priceController, keyboardType: const TextInputType.numberWithOptions(decimal: true), icon: Icons.currency_rupee_rounded, onChanged: (_) => setState(() {}))),
                     const SizedBox(width: 12),
-                    Expanded(child: _buildRateTaxModeField()),
+                    Expanded(child: _buildApplyTaxToggle()),
                   ],
                 ),
+                if (_applyTax) ...[
+                  const SizedBox(height: 12),
+                  _buildTaxInclusiveToggle(),
+                ],
                 const SizedBox(height: 18),
                 _buildTotalsAndTaxesCard(totals),
               ],
@@ -653,6 +678,8 @@ class _AddOrderItemDialogState extends State<AddOrderItemDialog> {
       ),
     );
   }
+
+  // ============ UI Helpers ============
 
   Widget _buildOneTimeItemToggle() {
     return Container(
@@ -921,7 +948,7 @@ class _AddOrderItemDialogState extends State<AddOrderItemDialog> {
     );
   }
 
-  Widget _buildRateTaxModeField() {
+  Widget _buildApplyTaxToggle() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -929,26 +956,75 @@ class _AddOrderItemDialogState extends State<AddOrderItemDialog> {
         Container(
           height: 54,
           padding: const EdgeInsets.symmetric(horizontal: 14),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: JoynColors.border, width: 1.2), boxShadow: _Premium.fieldShadow),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<_RateTaxMode>(
-              value: _rateTaxMode,
-              isExpanded: true,
-              icon: const Icon(Icons.keyboard_arrow_down_rounded, color: JoynColors.primary, size: 20),
-              style: JoynTypography.bodyLarge.copyWith(fontSize: 14.5, color: JoynColors.primary),
-              onChanged: (val) {
-                if (val == null) return;
-                HapticFeedback.selectionClick();
-                setState(() => _rateTaxMode = val);
-              },
-              items: const [
-                DropdownMenuItem(value: _RateTaxMode.withoutTax, child: Text('Without Tax')),
-                DropdownMenuItem(value: _RateTaxMode.withTax, child: Text('With Tax')),
-              ],
-            ),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: JoynColors.border, width: 1.2),
+            boxShadow: _Premium.fieldShadow,
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _applyTax ? 'With Tax' : 'Without Tax',
+                  style: JoynTypography.bodyLarge.copyWith(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w600,
+                    color: JoynColors.primary,
+                  ),
+                ),
+              ),
+              Switch.adaptive(
+                value: _applyTax,
+                onChanged: (val) {
+                  HapticFeedback.selectionClick();
+                  setState(() => _applyTax = val);
+                },
+                activeTrackColor: JoynColors.primary,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ],
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildTaxInclusiveToggle() {
+    return Container(
+      height: 54,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: JoynColors.border, width: 1.2),
+        boxShadow: _Premium.fieldShadow,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              _taxInclusiveMode == _TaxInclusiveMode.inclusive ? 'Inclusive' : 'Exclusive',
+              style: JoynTypography.bodyLarge.copyWith(
+                fontSize: 14.5,
+                fontWeight: FontWeight.w600,
+                color: JoynColors.primary,
+              ),
+            ),
+          ),
+          Switch.adaptive(
+            value: _taxInclusiveMode == _TaxInclusiveMode.inclusive,
+            onChanged: (val) {
+              HapticFeedback.selectionClick();
+              setState(() {
+                _taxInclusiveMode = val ? _TaxInclusiveMode.inclusive : _TaxInclusiveMode.exclusive;
+              });
+            },
+            activeTrackColor: JoynColors.primary,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+        ],
+      ),
     );
   }
 
@@ -965,6 +1041,8 @@ class _AddOrderItemDialogState extends State<AddOrderItemDialog> {
           const Divider(height: 20),
           _buildTotalsRow('Subtotal (Rate x Qty)', totals.subtotal),
           const SizedBox(height: 14),
+
+          // Discount row
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1017,44 +1095,49 @@ class _AddOrderItemDialogState extends State<AddOrderItemDialog> {
             ],
           ),
           const SizedBox(height: 14),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Tax %', style: JoynTypography.caption.copyWith(fontSize: 12, fontWeight: FontWeight.w700, color: JoynColors.secondaryText)),
-                    const SizedBox(height: 6),
-                    Container(
-                      height: 48,
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: JoynColors.border, width: 1.2)),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<TaxRateOption?>(
-                          value: _selectedTaxRate,
-                          isExpanded: true,
-                          hint: Text('None', style: JoynTypography.bodyLarge.copyWith(fontSize: 14.5)),
-                          icon: const Icon(Icons.keyboard_arrow_down_rounded, color: JoynColors.primary, size: 20),
-                          style: JoynTypography.bodyLarge.copyWith(fontSize: 14.5, color: JoynColors.primary),
-                          onChanged: (val) {
-                            HapticFeedback.selectionClick();
-                            setState(() => _selectedTaxRate = val);
-                          },
-                          items: [
-                            const DropdownMenuItem<TaxRateOption?>(value: null, child: Text('None')),
-                            ...kTaxRateOptions.map((t) => DropdownMenuItem<TaxRateOption?>(value: t, child: Text(t.label))),
-                          ],
+
+          // Tax area
+          if (_applyTax) ...[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Tax %', style: JoynTypography.caption.copyWith(fontSize: 12, fontWeight: FontWeight.w700, color: JoynColors.secondaryText)),
+                      const SizedBox(height: 6),
+                      Container(
+                        height: 48,
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: JoynColors.border, width: 1.2)),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<TaxRateOption?>(
+                            value: _selectedTaxRate,
+                            isExpanded: true,
+                            hint: Text('None', style: JoynTypography.bodyLarge.copyWith(fontSize: 14.5)),
+                            icon: const Icon(Icons.keyboard_arrow_down_rounded, color: JoynColors.primary, size: 20),
+                            style: JoynTypography.bodyLarge.copyWith(fontSize: 14.5, color: JoynColors.primary),
+                            onChanged: (val) {
+                              HapticFeedback.selectionClick();
+                              setState(() => _selectedTaxRate = val);
+                            },
+                            items: [
+                              const DropdownMenuItem<TaxRateOption?>(value: null, child: Text('None')),
+                              ...kTaxRateOptions.map((t) => DropdownMenuItem<TaxRateOption?>(value: t, child: Text(t.label))),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(child: _buildReadOnlyAmountBox(totals.taxAmount)),
-            ],
-          ),
+                const SizedBox(width: 10),
+                Expanded(child: _buildReadOnlyAmountBox(totals.taxAmount)),
+              ],
+            ),
+          ],
+
           const SizedBox(height: 16),
           Container(height: 1, color: JoynColors.border),
           const SizedBox(height: 12),

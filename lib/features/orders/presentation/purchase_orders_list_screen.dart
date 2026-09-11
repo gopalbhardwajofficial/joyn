@@ -1,3 +1,5 @@
+// lib/features/orders/presentation/purchase_orders_list_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -227,69 +229,69 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Search + Sort row
+            // Search + Sort row (no filter for purchase)
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
               child: Row(
                 children: [
                   Expanded(
                     child: Container(
-                      height: 48,
+                      height: 44,
                       decoration: BoxDecoration(
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: JoynColors.border, width: 1.2),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: JoynColors.border, width: 1),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.035),
-                            blurRadius: 10,
-                            offset: const Offset(0, 3),
+                            color: Colors.black.withValues(alpha: 0.03),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
                           ),
                         ],
                       ),
                       child: TextField(
                         onChanged: _onSearchChanged,
                         decoration: InputDecoration(
-                          hintText: 'Search by party name, order no, date...',
+                          hintText: 'Search orders...',
                           hintStyle: JoynTypography.bodyMedium.copyWith(
                             color: JoynColors.secondaryText.withValues(alpha: 0.5),
-                            fontSize: 13.5,
+                            fontSize: 13,
                           ),
-                          prefixIcon: const Icon(Icons.search_rounded, size: 20, color: JoynColors.secondaryText),
+                          prefixIcon: const Icon(Icons.search_rounded, size: 18, color: JoynColors.secondaryText),
                           suffixIcon: _searchQuery.isNotEmpty
                               ? IconButton(
-                            icon: const Icon(Icons.clear_rounded, size: 18, color: JoynColors.secondaryText),
+                            icon: const Icon(Icons.clear_rounded, size: 16, color: JoynColors.secondaryText),
                             onPressed: () => _onSearchChanged(''),
                           )
                               : null,
                           border: InputBorder.none,
-                          contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                          contentPadding: const EdgeInsets.symmetric(vertical: 10),
                         ),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
                   Tooltip(
                     message: 'Sort',
                     child: InkWell(
                       onTap: _showSortSheet,
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(12),
                       child: Container(
-                        width: 48,
-                        height: 48,
+                        width: 44,
+                        height: 44,
                         decoration: BoxDecoration(
                           color: Colors.white,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: JoynColors.border, width: 1.2),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: JoynColors.border, width: 1),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.035),
-                              blurRadius: 10,
-                              offset: const Offset(0, 3),
+                              color: Colors.black.withValues(alpha: 0.03),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
                             ),
                           ],
                         ),
-                        child: const Icon(Icons.swap_vert_rounded, size: 20, color: JoynColors.primary),
+                        child: const Icon(Icons.swap_vert_rounded, size: 18, color: JoynColors.primary),
                       ),
                     ),
                   ),
@@ -300,21 +302,21 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
             // Results count
             if (_orders.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
                       '${_filteredOrders.length} orders',
                       style: JoynTypography.caption.copyWith(
-                        fontSize: 12,
+                        fontSize: 11.5,
                         color: JoynColors.secondaryText,
                       ),
                     ),
                     Text(
                       'Total: ₹${_calculateTotal().toStringAsFixed(2)}',
                       style: JoynTypography.caption.copyWith(
-                        fontSize: 12,
+                        fontSize: 11.5,
                         fontWeight: FontWeight.w700,
                         color: JoynColors.primary,
                       ),
@@ -332,25 +334,25 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Container(
-                      width: 80,
-                      height: 80,
+                      width: 72,
+                      height: 72,
                       decoration: BoxDecoration(
                         color: JoynColors.iconBackground,
-                        borderRadius: BorderRadius.circular(24),
+                        borderRadius: BorderRadius.circular(20),
                       ),
-                      child: const Icon(Icons.shopping_cart_outlined, size: 40, color: JoynColors.secondaryText),
+                      child: const Icon(Icons.shopping_cart_outlined, size: 36, color: JoynColors.secondaryText),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 14),
                     Text(
                       _searchQuery.isNotEmpty ? 'No Orders Found' : 'No Purchase Orders Yet',
-                      style: JoynTypography.titleMedium.copyWith(fontSize: 18, fontWeight: FontWeight.w700),
+                      style: JoynTypography.titleMedium.copyWith(fontSize: 17, fontWeight: FontWeight.w700),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 4),
                     Text(
                       _searchQuery.isNotEmpty
                           ? 'Try adjusting your search'
                           : 'Tap "Add Purchase Order" to create your first order',
-                      style: JoynTypography.subtitle.copyWith(fontSize: 13),
+                      style: JoynTypography.subtitle.copyWith(fontSize: 12.5),
                     ),
                   ],
                 ),
@@ -359,7 +361,7 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
                 onRefresh: _loadOrders,
                 color: JoynColors.primary,
                 child: ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
                   itemCount: _filteredOrders.length,
                   itemBuilder: (context, index) {
                     final order = _filteredOrders[index];
@@ -369,7 +371,7 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
               child: Container(
                 width: double.infinity,
                 decoration: BoxDecoration(
@@ -381,19 +383,19 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
                       Color.lerp(JoynColors.primary, Colors.black, 0.18) ?? JoynColors.primary,
                     ],
                   ),
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
-                      color: JoynColors.primary.withValues(alpha: 0.28),
-                      blurRadius: 14,
-                      offset: const Offset(0, 6),
+                      color: JoynColors.primary.withValues(alpha: 0.25),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
                     ),
                   ],
                 ),
                 child: Material(
                   color: Colors.transparent,
                   child: InkWell(
-                    borderRadius: BorderRadius.circular(18),
+                    borderRadius: BorderRadius.circular(16),
                     onTap: () async {
                       HapticFeedback.lightImpact();
                       await Navigator.of(context).push(
@@ -402,18 +404,18 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
                       _loadOrders();
                     },
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 15),
+                      padding: const EdgeInsets.symmetric(vertical: 13),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(Icons.add_rounded, color: Colors.white, size: 20),
-                          const SizedBox(width: 8),
+                          const Icon(Icons.add_rounded, color: Colors.white, size: 18),
+                          const SizedBox(width: 6),
                           Text(
                             'Add Purchase Order',
                             style: JoynTypography.bodyMedium.copyWith(
                               fontWeight: FontWeight.w700,
                               color: Colors.white,
-                              fontSize: 14.5,
+                              fontSize: 14,
                             ),
                           ),
                         ],
@@ -437,29 +439,34 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
     return total;
   }
 
+  // ========== COMPACT & ATTRACTIVE CARD ==========
   Widget _buildOrderCard(PurchaseOrderModel order) {
+    List<OrderItemModel> items = [];
+    try {
+      items = order.items.map((map) => OrderItemModel.fromJson(map)).toList();
+    } catch (e) {
+      debugPrint('Error parsing items for order ${order.orderNo}: $e');
+    }
+    final showExpand = items.length > 2;
+
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Colors.white, JoynColors.background],
-        ),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: JoynColors.border, width: 1.2),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: JoynColors.border.withOpacity(0.4), width: 0.8),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.035),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(16),
           onTap: () async {
             HapticFeedback.lightImpact();
             await Navigator.of(context).push(
@@ -470,40 +477,40 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
             _loadOrders();
           },
           child: Padding(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(8),
+                      padding: const EdgeInsets.all(6),
                       decoration: BoxDecoration(
                         color: JoynColors.primary.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(8),
                       ),
-                      child: const Icon(Icons.shopping_cart_outlined, size: 18, color: JoynColors.primary),
+                      child: const Icon(Icons.shopping_cart_outlined, size: 16, color: JoynColors.primary),
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Text(
                             order.partyName,
-                            style: JoynTypography.bodyLarge.copyWith(
-                              fontSize: 14.5,
+                            style: JoynTypography.bodyMedium.copyWith(
+                              fontSize: 13.5,
                               fontWeight: FontWeight.w700,
                               color: JoynColors.primary,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
-                          const SizedBox(height: 2),
                           Text(
                             'Order #${order.orderNo} • ${order.date}',
                             style: JoynTypography.caption.copyWith(
-                              fontSize: 11.5,
+                              fontSize: 10.5,
                               color: JoynColors.secondaryText,
                             ),
                           ),
@@ -516,7 +523,7 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
                         Text(
                           'Due: ${order.dueDate}',
                           style: JoynTypography.caption.copyWith(
-                            fontSize: 10.5,
+                            fontSize: 9.5,
                             fontWeight: FontWeight.w700,
                             color: JoynColors.error,
                           ),
@@ -525,41 +532,62 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
                       '${order.items.length} items',
                       style: JoynTypography.caption.copyWith(
-                        fontSize: 12,
+                        fontSize: 11,
                         color: JoynColors.secondaryText,
                       ),
                     ),
                     Text(
                       '₹${order.totalAmount.toStringAsFixed(2)}',
                       style: JoynTypography.bodyLarge.copyWith(
-                        fontSize: 16,
+                        fontSize: 15,
                         fontWeight: FontWeight.w800,
                         color: JoynColors.primary,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
+                if (items.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  ...items.take(2).map((item) => _buildItemRow(item)),
+                  if (showExpand)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.keyboard_arrow_down_rounded, size: 14, color: JoynColors.secondaryText),
+                          Text(
+                            ' + ${items.length - 2} more',
+                            style: JoynTypography.caption.copyWith(
+                              fontSize: 10,
+                              color: JoynColors.secondaryText,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+                const SizedBox(height: 6),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
                     InkWell(
                       onTap: () => _deleteOrder(order),
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(6),
                       child: Container(
-                        padding: const EdgeInsets.all(6),
+                        padding: const EdgeInsets.all(4),
                         decoration: BoxDecoration(
                           color: JoynColors.error.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(6),
                         ),
-                        child: const Icon(Icons.delete_outline_rounded, size: 16, color: JoynColors.error),
+                        child: const Icon(Icons.delete_outline_rounded, size: 14, color: JoynColors.error),
                       ),
                     ),
                   ],
@@ -568,6 +596,119 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  // ========== COMPACT ITEM ROW with full breakdown ==========
+  Widget _buildItemRow(OrderItemModel item) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 5),
+      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
+      decoration: BoxDecoration(
+        color: JoynColors.chipBackground.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: JoynColors.border.withOpacity(0.2), width: 0.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            item.itemName,
+            style: JoynTypography.bodyMedium.copyWith(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+              color: JoynColors.primary,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 2),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Subtotal',
+                style: JoynTypography.caption.copyWith(
+                  fontSize: 9.5,
+                  color: JoynColors.secondaryText,
+                ),
+              ),
+              Text(
+                '${item.qty} ${item.unit.isNotEmpty ? item.unit : ''} × ₹${item.unitPrice.toStringAsFixed(2)} = ₹${item.subtotal.toStringAsFixed(2)}',
+                style: JoynTypography.caption.copyWith(
+                  fontSize: 9.5,
+                  fontWeight: FontWeight.w600,
+                  color: JoynColors.primary,
+                ),
+              ),
+            ],
+          ),
+          if (item.discountAmount > 0)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Discount',
+                  style: JoynTypography.caption.copyWith(
+                    fontSize: 9.5,
+                    color: JoynColors.secondaryText,
+                  ),
+                ),
+                Text(
+                  '-₹${item.discountAmount.toStringAsFixed(2)}',
+                  style: JoynTypography.caption.copyWith(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w600,
+                    color: JoynColors.error,
+                  ),
+                ),
+              ],
+            ),
+          if (item.taxAmount > 0)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Tax @${item.taxRate}%',
+                  style: JoynTypography.caption.copyWith(
+                    fontSize: 9.5,
+                    color: JoynColors.secondaryText,
+                  ),
+                ),
+                Text(
+                  '+₹${item.taxAmount.toStringAsFixed(2)}',
+                  style: JoynTypography.caption.copyWith(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w600,
+                    color: JoynColors.primary,
+                  ),
+                ),
+              ],
+            ),
+          const Divider(height: 4, thickness: 0.3, color: JoynColors.border),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Total',
+                style: JoynTypography.caption.copyWith(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: JoynColors.primary,
+                ),
+              ),
+              Text(
+                '₹${item.total.toStringAsFixed(2)}',
+                style: JoynTypography.caption.copyWith(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  color: JoynColors.primary,
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

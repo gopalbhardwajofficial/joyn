@@ -1,9 +1,10 @@
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/joyn_colors.dart';
 import '../../../core/theme/joyn_typography.dart';
-import '../models/order_item_model.dart';
 import '../models/sales_models.dart';
 import '../data/sales_repository.dart';
 import 'widgets/add_order_item_dialog.dart';
@@ -12,63 +13,32 @@ import '../../Inventory/presentation/scan_code_screen.dart';
 
 class _Premium {
   static List<BoxShadow> cardShadow = [
-    BoxShadow(
-      color: Colors.black.withValues(alpha: 0.05),
-      blurRadius: 20,
-      offset: const Offset(0, 8),
-    ),
-    BoxShadow(
-      color: Colors.black.withValues(alpha: 0.025),
-      blurRadius: 4,
-      offset: const Offset(0, 1),
-    ),
+    BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 20, offset: const Offset(0, 8)),
+    BoxShadow(color: Colors.black.withValues(alpha: 0.025), blurRadius: 4, offset: const Offset(0, 1)),
   ];
-
   static List<BoxShadow> fieldShadow = [
-    BoxShadow(
-      color: Colors.black.withValues(alpha: 0.035),
-      blurRadius: 10,
-      offset: const Offset(0, 3),
-    ),
+    BoxShadow(color: Colors.black.withValues(alpha: 0.035), blurRadius: 10, offset: const Offset(0, 3)),
   ];
-
   static List<BoxShadow> chipShadow(Color color) => [
-    BoxShadow(
-      color: color.withValues(alpha: 0.28),
-      blurRadius: 14,
-      offset: const Offset(0, 6),
-    ),
+    BoxShadow(color: color.withValues(alpha: 0.28), blurRadius: 14, offset: const Offset(0, 6)),
   ];
-
   static List<BoxShadow> floatingShadow(Color color) => [
-    BoxShadow(
-      color: color.withValues(alpha: 0.35),
-      blurRadius: 16,
-      offset: const Offset(0, 6),
-    ),
+    BoxShadow(color: color.withValues(alpha: 0.35), blurRadius: 16, offset: const Offset(0, 6)),
   ];
-
   static LinearGradient gradient(Color color) => LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [
-      color,
-      Color.lerp(color, Colors.black, 0.18) ?? color,
-    ],
+    begin: Alignment.topLeft, end: Alignment.bottomRight,
+    colors: [color, Color.lerp(color, Colors.black, 0.18) ?? color],
   );
-
   static LinearGradient surfaceGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [
-      Colors.white,
-      JoynColors.background,
-    ],
+    begin: Alignment.topLeft, end: Alignment.bottomRight,
+    colors: [Colors.white, JoynColors.background],
   );
 }
 
 class AddPurchaseOrderScreen extends StatefulWidget {
-  const AddPurchaseOrderScreen({super.key});
+  const AddPurchaseOrderScreen({super.key, this.initialParty});
+
+  final PartyModel? initialParty;
 
   @override
   State<AddPurchaseOrderScreen> createState() => _AddPurchaseOrderScreenState();
@@ -93,6 +63,9 @@ class _AddPurchaseOrderScreenState extends State<AddPurchaseOrderScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.initialParty != null) {
+      _partyNameController.text = widget.initialParty!.name;
+    }
     _loadSavedParties();
     _loadSavedItems();
     _loadNextOrderNo();
@@ -110,9 +83,7 @@ class _AddPurchaseOrderScreenState extends State<AddPurchaseOrderScreen> {
       final orders = await _salesRepository.getPurchaseOrders();
       if (orders.isNotEmpty && mounted) {
         final maxOrderNo = orders.map((o) => o.orderNo).reduce((a, b) => a > b ? a : b);
-        setState(() {
-          _orderNo = maxOrderNo + 1;
-        });
+        setState(() => _orderNo = maxOrderNo + 1);
       }
     } catch (e) {
       debugPrint('Error loading order no: $e');
@@ -123,9 +94,7 @@ class _AddPurchaseOrderScreenState extends State<AddPurchaseOrderScreen> {
     try {
       final parties = await _salesRepository.getParties();
       if (!mounted) return;
-      setState(() {
-        _savedParties = parties;
-      });
+      setState(() => _savedParties = parties);
     } catch (e) {
       debugPrint('Error loading parties: $e');
     }
@@ -135,9 +104,7 @@ class _AddPurchaseOrderScreenState extends State<AddPurchaseOrderScreen> {
     try {
       final items = await _salesRepository.getItems();
       if (!mounted) return;
-      setState(() {
-        _savedItems = items;
-      });
+      setState(() => _savedItems = items);
     } catch (e) {
       debugPrint('Error loading items: $e');
     }
@@ -158,7 +125,7 @@ class _AddPurchaseOrderScreenState extends State<AddPurchaseOrderScreen> {
   String _formatDate(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 
-  double get _itemsTotal => _items.fold(0, (sum, item) => sum + item.amount);
+  double get _itemsTotal => _items.fold(0, (sum, item) => sum + item.total);
 
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
@@ -290,8 +257,9 @@ class _AddPurchaseOrderScreenState extends State<AddPurchaseOrderScreen> {
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         itemName: foundItem.name,
         category: foundItem.category,
-        price: foundItem.purchasePrice != 0 ? foundItem.purchasePrice : foundItem.sellingPrice,
+        unitPrice: foundItem.purchasePrice != 0 ? foundItem.purchasePrice : foundItem.sellingPrice,
         qty: 1,
+        unit: foundItem.unit,
       );
 
       setState(() {
@@ -539,9 +507,14 @@ class _AddPurchaseOrderScreenState extends State<AddPurchaseOrderScreen> {
       items: _items.map((i) => {
         'name': i.itemName,
         'category': i.category,
-        'price': i.price,
+        'unitPrice': i.unitPrice,
         'qty': i.qty,
-        'amount': i.amount,
+        'discountAmount': i.discountAmount,
+        'taxAmount': i.taxAmount,
+        'taxRate': i.taxRate,
+        'taxInclusive': i.taxInclusive ? 1 : 0,
+        'total': i.total,
+        'unit': i.unit,
       }).toList(),
       totalAmount: double.tryParse(_totalAmountController.text.trim()) ?? 0,
       createdAt: DateTime.now(),
@@ -570,7 +543,7 @@ class _AddPurchaseOrderScreenState extends State<AddPurchaseOrderScreen> {
         _userEditedTotalManually = false;
       });
     } else {
-      context.pop();
+      context.pop(true);
     }
   }
 
@@ -1014,7 +987,13 @@ class _AddPurchaseOrderScreenState extends State<AddPurchaseOrderScreen> {
     );
   }
 
+  // ==================== UPDATED ITEMS CARD ====================
   Widget _buildItemsCard() {
+    final subtotalTotal = _items.fold(0.0, (sum, item) => sum + item.subtotal);
+    final discountTotal = _items.fold(0.0, (sum, item) => sum + item.discountAmount);
+    final taxTotal = _items.fold(0.0, (sum, item) => sum + item.taxAmount);
+    final totalQty = _items.fold(0, (sum, item) => sum + item.qty);
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(18),
@@ -1051,7 +1030,14 @@ class _AddPurchaseOrderScreenState extends State<AddPurchaseOrderScreen> {
           : Column(
         children: [
           ..._items.map((item) => _buildItemRow(item)),
-          const SizedBox(height: 4),
+          const SizedBox(height: 10),
+          Divider(color: JoynColors.border, thickness: 1.2),
+          const SizedBox(height: 10),
+          _buildSummaryRow('Total Disc.', discountTotal, isDiscount: true),
+          _buildSummaryRow('Total Qty.', totalQty.toDouble(), isQty: true),
+          _buildSummaryRow('Total Tax Amt.', taxTotal, isTax: true),
+          _buildSummaryRow('Subtotal', subtotalTotal, isSubtotal: true),
+          const SizedBox(height: 8),
           InkWell(
             onTap: () => _addItem(),
             borderRadius: BorderRadius.circular(12),
@@ -1072,42 +1058,172 @@ class _AddPurchaseOrderScreenState extends State<AddPurchaseOrderScreen> {
     );
   }
 
+  Widget _buildSummaryRow(String label, double value, {bool isDiscount = false, bool isTax = false, bool isSubtotal = false, bool isQty = false}) {
+    Color color = JoynColors.secondaryText;
+    String prefix = '';
+    if (isDiscount) {
+      color = JoynColors.error;
+      prefix = '- ';
+    } else if (isTax) {
+      color = JoynColors.primary;
+      prefix = '+ ';
+    } else if (isSubtotal) {
+      color = JoynColors.primary;
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: JoynTypography.bodyMedium.copyWith(
+            fontSize: 13,
+            fontWeight: isSubtotal ? FontWeight.w700 : FontWeight.w500,
+            color: isSubtotal ? JoynColors.primary : JoynColors.secondaryText,
+          )),
+          Text(
+            isQty ? value.toInt().toString() : '$prefix₹${value.toStringAsFixed(2)}',
+            style: JoynTypography.bodyMedium.copyWith(
+              fontSize: 13,
+              fontWeight: isSubtotal ? FontWeight.w700 : FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildItemRow(OrderItemModel item) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
+      margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: JoynColors.border, width: 1.2),
         boxShadow: _Premium.fieldShadow,
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: JoynColors.primary.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: const Icon(Icons.inventory_2_outlined, size: 16, color: JoynColors.primary),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  '#${_items.indexOf(item) + 1} ${item.itemName}',
+                  style: JoynTypography.bodyMedium.copyWith(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Text(
+                '₹${item.total.toStringAsFixed(2)}',
+                style: JoynTypography.bodyLarge.copyWith(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                  color: JoynColors.primary,
+                ),
+              ),
+              const SizedBox(width: 8),
+              InkWell(
+                onTap: () => _addItem(existing: item),
+                child: const Icon(Icons.edit_outlined, size: 18, color: JoynColors.secondaryText),
+              ),
+              const SizedBox(width: 4),
+              InkWell(
+                onTap: () => _removeItem(item.id),
+                child: const Icon(Icons.delete_outline_rounded, size: 18, color: JoynColors.error),
+              ),
+            ],
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Item Subtotal',
+                style: JoynTypography.caption.copyWith(
+                  fontSize: 11.5,
+                  color: JoynColors.secondaryText,
+                ),
+              ),
+              Text(
+                '${item.qty} ${item.unit.isNotEmpty ? item.unit : ''} x ₹${item.unitPrice.toStringAsFixed(2)} = ₹${item.subtotal.toStringAsFixed(2)}',
+                style: JoynTypography.caption.copyWith(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                  color: JoynColors.primary,
+                ),
+              ),
+            ],
+          ),
+          if (item.discountAmount > 0)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(item.itemName, style: JoynTypography.bodyMedium.copyWith(fontWeight: FontWeight.w700, fontSize: 14)),
-                const SizedBox(height: 2),
-                Text('${item.qty} x ₹${item.price.toStringAsFixed(2)}', style: JoynTypography.caption.copyWith(fontSize: 12, color: JoynColors.secondaryText)),
+                Text(
+                  'Discount (${(item.discountAmount / item.subtotal * 100).toStringAsFixed(0)}%)',
+                  style: JoynTypography.caption.copyWith(
+                    fontSize: 11.5,
+                    color: JoynColors.secondaryText,
+                  ),
+                ),
+                Text(
+                  '₹${item.discountAmount.toStringAsFixed(2)}',
+                  style: JoynTypography.caption.copyWith(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: JoynColors.error,
+                  ),
+                ),
               ],
             ),
+          if (item.taxAmount > 0)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Tax GST@${item.taxRate}%',
+                  style: JoynTypography.caption.copyWith(
+                    fontSize: 11.5,
+                    color: JoynColors.secondaryText,
+                  ),
+                ),
+                Text(
+                  '₹${item.taxAmount.toStringAsFixed(2)}',
+                  style: JoynTypography.caption.copyWith(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: JoynColors.primary,
+                  ),
+                ),
+              ],
+            ),
+          const Divider(height: 14, color: JoynColors.border),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Total',
+                style: JoynTypography.bodyMedium.copyWith(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                  color: JoynColors.primary,
+                ),
+              ),
+              Text(
+                '₹${item.total.toStringAsFixed(2)}',
+                style: JoynTypography.bodyMedium.copyWith(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 14,
+                  color: JoynColors.primary,
+                ),
+              ),
+            ],
           ),
-          Text('₹${item.amount.toStringAsFixed(2)}', style: JoynTypography.bodyLarge.copyWith(fontWeight: FontWeight.w800, fontSize: 15, color: JoynColors.primary)),
-          const SizedBox(width: 10),
-          InkWell(onTap: () => _addItem(existing: item), child: const Icon(Icons.edit_outlined, size: 18, color: JoynColors.secondaryText)),
-          const SizedBox(width: 10),
-          InkWell(onTap: () => _removeItem(item.id), child: const Icon(Icons.delete_outline_rounded, size: 18, color: JoynColors.error)),
         ],
       ),
     );

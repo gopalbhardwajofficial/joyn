@@ -7,15 +7,17 @@
 // Persists to the local sqlite `payments` table via SalesRepository.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../../core/theme/joyn_colors.dart';
 import '../../../core/theme/joyn_typography.dart';
 import '../../orders/models/sales_models.dart';
 import '../../orders/data/sales_repository.dart';
 
 class PaymentInScreen extends StatefulWidget {
-  const PaymentInScreen({super.key, required this.party});
+  const PaymentInScreen({super.key, required this.party, this.isPaymentOut});
 
   final PartyModel party;
+  final bool? isPaymentOut;   // 👈 null = auto-detect from balance (jaisa pehle tha)
 
   @override
   State<PaymentInScreen> createState() => _PaymentInScreenState();
@@ -36,6 +38,9 @@ class _PaymentInScreenState extends State<PaymentInScreen> {
 
   double get _receivedAmount => double.tryParse(_receivedController.text) ?? 0;
   double get _remainingBalance => (_currentBalance - _receivedAmount).clamp(0, double.infinity);
+
+  // 👈 null = auto-detect from balance, otherwise use the passed value
+  bool get _effectiveIsPaymentOut => widget.isPaymentOut ?? !_isReceivable;
 
   @override
   void initState() {
@@ -91,7 +96,7 @@ class _PaymentInScreenState extends State<PaymentInScreen> {
       partyName: _customerNameController.text.trim(),
       partyPhone: _customerPhoneController.text.trim(),
       receivedAmount: _receivedAmount,
-      isPaymentOut: !_isReceivable,
+      isPaymentOut: _effectiveIsPaymentOut,
       createdAt: DateTime.now(),
     );
 
@@ -100,7 +105,7 @@ class _PaymentInScreenState extends State<PaymentInScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: const Text('Payment saved!'),
+        content: Text(_effectiveIsPaymentOut ? 'Payment Out saved!' : 'Payment saved!'),
         backgroundColor: JoynColors.primary,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -124,7 +129,10 @@ class _PaymentInScreenState extends State<PaymentInScreen> {
         backgroundColor: JoynColors.background,
         elevation: 0,
         leading: IconButton(icon: const Icon(Icons.arrow_back_rounded), onPressed: () => Navigator.of(context).pop()),
-        title: Text('Payment-In', style: JoynTypography.titleMedium.copyWith(fontSize: 18, fontWeight: FontWeight.w800)),
+        title: Text(
+          _effectiveIsPaymentOut ? 'Payment-Out' : 'Payment-In',
+          style: JoynTypography.titleMedium.copyWith(fontSize: 18, fontWeight: FontWeight.w800),
+        ),
         actions: [IconButton(icon: const Icon(Icons.settings_outlined), onPressed: () {})],
       ),
       body: SafeArea(
@@ -213,6 +221,9 @@ class _PaymentInScreenState extends State<PaymentInScreen> {
   }
 
   Widget _buildAmountCard() {
+    final label = _effectiveIsPaymentOut ? 'Paid' : 'Received';
+    final color = _effectiveIsPaymentOut ? JoynColors.error : JoynColors.success;
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(color: JoynColors.chipBackground, borderRadius: BorderRadius.circular(16)),
@@ -221,7 +232,7 @@ class _PaymentInScreenState extends State<PaymentInScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Received', style: JoynTypography.bodyLarge.copyWith(fontSize: 14.5, fontWeight: FontWeight.w700)),
+              Text(label, style: JoynTypography.bodyLarge.copyWith(fontSize: 14.5, fontWeight: FontWeight.w700)),
               SizedBox(
                 width: 150,
                 child: TextField(
@@ -240,8 +251,8 @@ class _PaymentInScreenState extends State<PaymentInScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Total Amount', style: JoynTypography.bodyLarge.copyWith(fontSize: 14.5, fontWeight: FontWeight.w700, color: JoynColors.success)),
-              Text('₹${_remainingBalance.toStringAsFixed(2)}', style: JoynTypography.titleMedium.copyWith(fontSize: 17, fontWeight: FontWeight.w800, color: JoynColors.success)),
+              Text('Total Amount', style: JoynTypography.bodyLarge.copyWith(fontSize: 14.5, fontWeight: FontWeight.w700, color: color)),
+              Text('₹${_remainingBalance.toStringAsFixed(2)}', style: JoynTypography.titleMedium.copyWith(fontSize: 17, fontWeight: FontWeight.w800, color: color)),
             ],
           ),
         ],

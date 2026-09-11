@@ -1,3 +1,5 @@
+// lib/features/orders/presentation/sale_orders_list_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -291,102 +293,102 @@ class _SaleOrdersListScreenState extends State<SaleOrdersListScreen> {
           children: [
             // Search + Sort + Filter row
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
               child: Row(
                 children: [
                   Expanded(
                     child: Container(
-                      height: 48,
+                      height: 44,
                       decoration: BoxDecoration(
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: JoynColors.border, width: 1.2),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: JoynColors.border, width: 1),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.035),
-                            blurRadius: 10,
-                            offset: const Offset(0, 3),
+                            color: Colors.black.withValues(alpha: 0.03),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
                           ),
                         ],
                       ),
                       child: TextField(
                         onChanged: _onSearchChanged,
                         decoration: InputDecoration(
-                          hintText: 'Search by customer, invoice no...',
+                          hintText: 'Search sales...',
                           hintStyle: JoynTypography.bodyMedium.copyWith(
                             color: JoynColors.secondaryText.withValues(alpha: 0.5),
-                            fontSize: 13.5,
+                            fontSize: 13,
                           ),
-                          prefixIcon: const Icon(Icons.search_rounded, size: 20, color: JoynColors.secondaryText),
+                          prefixIcon: const Icon(Icons.search_rounded, size: 18, color: JoynColors.secondaryText),
                           suffixIcon: _searchQuery.isNotEmpty
                               ? IconButton(
-                            icon: const Icon(Icons.clear_rounded, size: 18, color: JoynColors.secondaryText),
+                            icon: const Icon(Icons.clear_rounded, size: 16, color: JoynColors.secondaryText),
                             onPressed: () => _onSearchChanged(''),
                           )
                               : null,
                           border: InputBorder.none,
-                          contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                          contentPadding: const EdgeInsets.symmetric(vertical: 10),
                         ),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
                   Tooltip(
                     message: 'Sort',
                     child: InkWell(
                       onTap: _showSortSheet,
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(12),
                       child: Container(
-                        width: 48,
-                        height: 48,
+                        width: 44,
+                        height: 44,
                         decoration: BoxDecoration(
                           color: Colors.white,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: JoynColors.border, width: 1.2),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: JoynColors.border, width: 1),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.035),
-                              blurRadius: 10,
-                              offset: const Offset(0, 3),
+                              color: Colors.black.withValues(alpha: 0.03),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
                             ),
                           ],
                         ),
-                        child: const Icon(Icons.swap_vert_rounded, size: 20, color: JoynColors.primary),
+                        child: const Icon(Icons.swap_vert_rounded, size: 18, color: JoynColors.primary),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
                   Tooltip(
                     message: 'Filter',
                     child: InkWell(
                       onTap: _showFilterSheet,
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(12),
                       child: Container(
-                        width: 48,
-                        height: 48,
+                        width: 44,
+                        height: 44,
                         decoration: BoxDecoration(
                           color: Colors.white,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: JoynColors.border, width: 1.2),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: JoynColors.border, width: 1),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.035),
-                              blurRadius: 10,
-                              offset: const Offset(0, 3),
+                              color: Colors.black.withValues(alpha: 0.03),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
                             ),
                           ],
                         ),
                         child: Stack(
                           alignment: Alignment.center,
                           children: [
-                            const Icon(Icons.filter_list_rounded, size: 20, color: JoynColors.primary),
+                            const Icon(Icons.filter_list_rounded, size: 18, color: JoynColors.primary),
                             if (_paymentFilter != _PaymentFilter.all)
                               Positioned(
                                 top: 6,
                                 right: 6,
                                 child: Container(
-                                  width: 7,
-                                  height: 7,
+                                  width: 6,
+                                  height: 6,
                                   decoration: const BoxDecoration(
                                     color: JoynColors.error,
                                     shape: BoxShape.circle,
@@ -405,21 +407,21 @@ class _SaleOrdersListScreenState extends State<SaleOrdersListScreen> {
             // Results count
             if (_orders.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
                       '${_filteredOrders.length} sales',
                       style: JoynTypography.caption.copyWith(
-                        fontSize: 12,
+                        fontSize: 11.5,
                         color: JoynColors.secondaryText,
                       ),
                     ),
                     Text(
                       'Total: ₹${_calculateTotal().toStringAsFixed(2)}',
                       style: JoynTypography.caption.copyWith(
-                        fontSize: 12,
+                        fontSize: 11.5,
                         fontWeight: FontWeight.w700,
                         color: JoynColors.primary,
                       ),
@@ -437,27 +439,27 @@ class _SaleOrdersListScreenState extends State<SaleOrdersListScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Container(
-                      width: 80,
-                      height: 80,
+                      width: 72,
+                      height: 72,
                       decoration: BoxDecoration(
                         color: JoynColors.iconBackground,
-                        borderRadius: BorderRadius.circular(24),
+                        borderRadius: BorderRadius.circular(20),
                       ),
-                      child: const Icon(Icons.receipt_long_outlined, size: 40, color: JoynColors.secondaryText),
+                      child: const Icon(Icons.receipt_long_outlined, size: 36, color: JoynColors.secondaryText),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 14),
                     Text(
                       _searchQuery.isNotEmpty || _paymentFilter != _PaymentFilter.all
                           ? 'No Sales Found'
                           : 'No Sales Yet',
-                      style: JoynTypography.titleMedium.copyWith(fontSize: 18, fontWeight: FontWeight.w700),
+                      style: JoynTypography.titleMedium.copyWith(fontSize: 17, fontWeight: FontWeight.w700),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 4),
                     Text(
                       _searchQuery.isNotEmpty || _paymentFilter != _PaymentFilter.all
                           ? 'Try adjusting your search or filter'
                           : 'Tap "Add Sale" to create your first sale',
-                      style: JoynTypography.subtitle.copyWith(fontSize: 13),
+                      style: JoynTypography.subtitle.copyWith(fontSize: 12.5),
                     ),
                   ],
                 ),
@@ -466,7 +468,7 @@ class _SaleOrdersListScreenState extends State<SaleOrdersListScreen> {
                 onRefresh: _loadOrders,
                 color: JoynColors.primary,
                 child: ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
                   itemCount: _filteredOrders.length,
                   itemBuilder: (context, index) {
                     final order = _filteredOrders[index];
@@ -476,7 +478,7 @@ class _SaleOrdersListScreenState extends State<SaleOrdersListScreen> {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
               child: Container(
                 width: double.infinity,
                 decoration: BoxDecoration(
@@ -488,19 +490,19 @@ class _SaleOrdersListScreenState extends State<SaleOrdersListScreen> {
                       Color.lerp(JoynColors.primary, Colors.black, 0.18) ?? JoynColors.primary,
                     ],
                   ),
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
-                      color: JoynColors.primary.withValues(alpha: 0.28),
-                      blurRadius: 14,
-                      offset: const Offset(0, 6),
+                      color: JoynColors.primary.withValues(alpha: 0.25),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
                     ),
                   ],
                 ),
                 child: Material(
                   color: Colors.transparent,
                   child: InkWell(
-                    borderRadius: BorderRadius.circular(18),
+                    borderRadius: BorderRadius.circular(16),
                     onTap: () async {
                       HapticFeedback.lightImpact();
                       await Navigator.of(context).push(
@@ -509,18 +511,18 @@ class _SaleOrdersListScreenState extends State<SaleOrdersListScreen> {
                       _loadOrders();
                     },
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 15),
+                      padding: const EdgeInsets.symmetric(vertical: 13),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(Icons.add_rounded, color: Colors.white, size: 20),
-                          const SizedBox(width: 8),
+                          const Icon(Icons.add_rounded, color: Colors.white, size: 18),
+                          const SizedBox(width: 6),
                           Text(
                             'Add Sale',
                             style: JoynTypography.bodyMedium.copyWith(
                               fontWeight: FontWeight.w700,
                               color: Colors.white,
-                              fontSize: 14.5,
+                              fontSize: 14,
                             ),
                           ),
                         ],
@@ -544,31 +546,35 @@ class _SaleOrdersListScreenState extends State<SaleOrdersListScreen> {
     return total;
   }
 
+  // ========== COMPACT & ATTRACTIVE CARD ==========
   Widget _buildOrderCard(SaleOrderModel order) {
     final isCredit = order.paymentMode.toLowerCase() == 'credit';
+    List<OrderItemModel> items = [];
+    try {
+      items = order.items.map((map) => OrderItemModel.fromJson(map)).toList();
+    } catch (e) {
+      debugPrint('Error parsing items for order ${order.invoiceNo}: $e');
+    }
+    final showExpand = items.length > 2;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Colors.white, JoynColors.background],
-        ),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: JoynColors.border, width: 1.2),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: JoynColors.border.withOpacity(0.4), width: 0.8),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.035),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(16),
           onTap: () async {
             HapticFeedback.lightImpact();
             await Navigator.of(context).push(
@@ -579,10 +585,11 @@ class _SaleOrdersListScreenState extends State<SaleOrdersListScreen> {
             _loadOrders();
           },
           child: Padding(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Header row – more compact
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -590,33 +597,33 @@ class _SaleOrdersListScreenState extends State<SaleOrdersListScreen> {
                       child: Row(
                         children: [
                           Container(
-                            padding: const EdgeInsets.all(8),
+                            padding: const EdgeInsets.all(6),
                             decoration: BoxDecoration(
                               color: JoynColors.primary.withValues(alpha: 0.08),
-                              borderRadius: BorderRadius.circular(10),
+                              borderRadius: BorderRadius.circular(8),
                             ),
-                            child: const Icon(Icons.receipt_long_outlined, size: 18, color: JoynColors.primary),
+                            child: const Icon(Icons.receipt_long_outlined, size: 16, color: JoynColors.primary),
                           ),
-                          const SizedBox(width: 10),
+                          const SizedBox(width: 8),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Text(
                                   order.customerName,
-                                  style: JoynTypography.bodyLarge.copyWith(
-                                    fontSize: 14.5,
+                                  style: JoynTypography.bodyMedium.copyWith(
+                                    fontSize: 13.5,
                                     fontWeight: FontWeight.w700,
                                     color: JoynColors.primary,
                                   ),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
-                                const SizedBox(height: 2),
                                 Text(
                                   'Invoice #${order.invoiceNo} • ${order.date}',
                                   style: JoynTypography.caption.copyWith(
-                                    fontSize: 11.5,
+                                    fontSize: 10.5,
                                     color: JoynColors.secondaryText,
                                   ),
                                 ),
@@ -627,23 +634,23 @@ class _SaleOrdersListScreenState extends State<SaleOrdersListScreen> {
                       ),
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
                         color: isCredit
                             ? JoynColors.error.withValues(alpha: 0.08)
                             : JoynColors.success.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(20),
+                        borderRadius: BorderRadius.circular(12),
                         border: Border.all(
                           color: isCredit
                               ? JoynColors.error.withValues(alpha: 0.2)
                               : JoynColors.success.withValues(alpha: 0.2),
-                          width: 1,
+                          width: 0.8,
                         ),
                       ),
                       child: Text(
                         order.paymentMode,
                         style: JoynTypography.caption.copyWith(
-                          fontSize: 10.5,
+                          fontSize: 9.5,
                           fontWeight: FontWeight.w700,
                           color: isCredit ? JoynColors.error : JoynColors.success,
                         ),
@@ -651,41 +658,65 @@ class _SaleOrdersListScreenState extends State<SaleOrdersListScreen> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
+                // Summary row
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
                       '${order.items.length} items',
                       style: JoynTypography.caption.copyWith(
-                        fontSize: 12,
+                        fontSize: 11,
                         color: JoynColors.secondaryText,
                       ),
                     ),
                     Text(
                       '₹${order.totalAmount.toStringAsFixed(2)}',
                       style: JoynTypography.bodyLarge.copyWith(
-                        fontSize: 16,
+                        fontSize: 15,
                         fontWeight: FontWeight.w800,
                         color: JoynColors.primary,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
+                // Item preview
+                if (items.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  ...items.take(2).map((item) => _buildItemRow(item)),
+                  if (showExpand)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.keyboard_arrow_down_rounded, size: 14, color: JoynColors.secondaryText),
+                          Text(
+                            ' + ${items.length - 2} more',
+                            style: JoynTypography.caption.copyWith(
+                              fontSize: 10,
+                              color: JoynColors.secondaryText,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+                const SizedBox(height: 6),
+                // Delete button (smaller)
                 Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
                     InkWell(
                       onTap: () => _deleteOrder(order),
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(6),
                       child: Container(
-                        padding: const EdgeInsets.all(6),
+                        padding: const EdgeInsets.all(4),
                         decoration: BoxDecoration(
                           color: JoynColors.error.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(6),
                         ),
-                        child: const Icon(Icons.delete_outline_rounded, size: 16, color: JoynColors.error),
+                        child: const Icon(Icons.delete_outline_rounded, size: 14, color: JoynColors.error),
                       ),
                     ),
                   ],
@@ -694,6 +725,124 @@ class _SaleOrdersListScreenState extends State<SaleOrdersListScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  // ========== COMPACT ITEM ROW with full breakdown ==========
+  Widget _buildItemRow(OrderItemModel item) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 5),
+      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
+      decoration: BoxDecoration(
+        color: JoynColors.chipBackground.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: JoynColors.border.withOpacity(0.2), width: 0.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Item name
+          Text(
+            item.itemName,
+            style: JoynTypography.bodyMedium.copyWith(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+              color: JoynColors.primary,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 2),
+          // Subtotal
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Subtotal',
+                style: JoynTypography.caption.copyWith(
+                  fontSize: 9.5,
+                  color: JoynColors.secondaryText,
+                ),
+              ),
+              Text(
+                '${item.qty} ${item.unit.isNotEmpty ? item.unit : ''} × ₹${item.unitPrice.toStringAsFixed(2)} = ₹${item.subtotal.toStringAsFixed(2)}',
+                style: JoynTypography.caption.copyWith(
+                  fontSize: 9.5,
+                  fontWeight: FontWeight.w600,
+                  color: JoynColors.primary,
+                ),
+              ),
+            ],
+          ),
+          // Discount
+          if (item.discountAmount > 0)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Discount',
+                  style: JoynTypography.caption.copyWith(
+                    fontSize: 9.5,
+                    color: JoynColors.secondaryText,
+                  ),
+                ),
+                Text(
+                  '-₹${item.discountAmount.toStringAsFixed(2)}',
+                  style: JoynTypography.caption.copyWith(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w600,
+                    color: JoynColors.error,
+                  ),
+                ),
+              ],
+            ),
+          // Tax
+          if (item.taxAmount > 0)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Tax @${item.taxRate}%',
+                  style: JoynTypography.caption.copyWith(
+                    fontSize: 9.5,
+                    color: JoynColors.secondaryText,
+                  ),
+                ),
+                Text(
+                  '+₹${item.taxAmount.toStringAsFixed(2)}',
+                  style: JoynTypography.caption.copyWith(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w600,
+                    color: JoynColors.primary,
+                  ),
+                ),
+              ],
+            ),
+          const Divider(height: 4, thickness: 0.3, color: JoynColors.border),
+          // Total
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Total',
+                style: JoynTypography.caption.copyWith(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: JoynColors.primary,
+                ),
+              ),
+              Text(
+                '₹${item.total.toStringAsFixed(2)}',
+                style: JoynTypography.caption.copyWith(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  color: JoynColors.primary,
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

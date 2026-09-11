@@ -60,6 +60,11 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
         contactNumber: updatedData['contactNumber'] as String?,
         email: updatedData['email'] as String?,
         address: updatedData['billingAddress'] as String?,
+        city: updatedData['city'] as String?,
+        partyType: updatedData['partyType'] as String?,
+        priorityLevel: updatedData['priorityLevel'] as String?,
+        photoPath: updatedData['photoPath'] as String?,
+        avatarIndex: updatedData['avatarIndex'] as int?,
       );
     });
     _loadData();
@@ -124,7 +129,6 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
         actions: [
           IconButton(icon: const Icon(Icons.edit_outlined), tooltip: 'Edit', onPressed: _openEdit),
           IconButton(icon: const Icon(Icons.more_vert_rounded), onPressed: () {
-            // Show quick actions menu
             showModalBottomSheet(
               context: context,
               backgroundColor: Colors.white,
@@ -195,7 +199,6 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
           ),
         ),
       ),
-      // Bottom bar removed - Take Payment and Add Sale are now in the AppBar menu
     );
   }
 

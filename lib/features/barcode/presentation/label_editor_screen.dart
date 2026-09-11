@@ -503,13 +503,11 @@ class _LabelEditorScreenState extends State<LabelEditorScreen> {
                       onChanged: (v) => setSheetState(() => el.serialEnabled = v),
                       activeColor: JoynColors.primary,
                     ),
-                    if (el.serialEnabled) ...[
-                      _propertyField('Prefix', el.prefix, (val) => setSheetState(() => el.prefix = val)),
-                      _propertyField('Suffix', el.suffix, (val) => setSheetState(() => el.suffix = val)),
-                      _propertyField('Start Value', el.startValue.toString(), (val) => setSheetState(() => el.startValue = int.tryParse(val) ?? 1)),
-                      _propertyField('Interval', el.interval.toString(), (val) => setSheetState(() => el.interval = int.tryParse(val) ?? 1)),
-                      _propertyDropdown('Encoding', el.encoding, _kEncodings, (val) => setSheetState(() => el.encoding = val)),
-                    ],
+                    _propertyField('Prefix', el.prefix, (val) => setSheetState(() { el.prefix = val; el.serialEnabled = true; })),
+                    _propertyField('Suffix', el.suffix, (val) => setSheetState(() { el.suffix = val; el.serialEnabled = true; })),
+                    _propertyField('Start Value', el.startValue.toString(), (val) => setSheetState(() { el.startValue = int.tryParse(val) ?? 1; el.serialEnabled = true; })),
+                    _propertyField('Interval', el.interval.toString(), (val) => setSheetState(() { el.interval = int.tryParse(val) ?? 1; el.serialEnabled = true; })),
+                    _propertyDropdown('Encoding', el.encoding, _kEncodings, (val) => setSheetState(() => el.encoding = val)),
                   ],
 
                   if (el.type == LabelElementType.qrCode) ...[

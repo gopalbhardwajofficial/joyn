@@ -1,9 +1,14 @@
+// lib/features/dashboard/presentation/dashboard_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:joyn/features/Inventory/presentation/add_new_party_screen.dart';
+import 'package:joyn/features/Inventory/presentation/payment_in_screen.dart';
 import 'package:joyn/features/orders/presentation/sale_orders_list_screen.dart';
 import 'package:joyn/features/orders/presentation/purchase_orders_list_screen.dart';
+import 'package:joyn/features/orders/models/sales_models.dart';
+import 'package:joyn/features/orders/data/sales_repository.dart';
 import '../../../core/theme/joyn_colors.dart';
 import '../../../core/theme/joyn_typography.dart';
 import '../../auth/providers/auth_provider.dart';
@@ -14,7 +19,6 @@ import 'package:joyn/features/barcode/presentation/label_editor_screen.dart';
 import '../../Inventory/presentation/manage_inventory_screen.dart';
 import 'package:joyn/features/reports/Presentation/overview_screen.dart';
 import 'package:joyn/features/reports/Presentation/reports_screen.dart';
-
 
 class _DashColors {
   static const pageBackground = Color.fromRGBO(221, 221, 221, 1);
@@ -42,7 +46,6 @@ class DashboardScreen extends ConsumerStatefulWidget {
 }
 
 class _DashboardScreenState extends ConsumerState<DashboardScreen> {
-  int _selectedTabIndex = 0;
   int _bottomNavIndex = 0;
   bool _hasTriggeredPopup = false;
 
@@ -104,16 +107,22 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 ),
               ),
               ListTile(
-                leading: const Icon(Icons.storefront_outlined, color: JoynColors.primary),
-                title: Text('Business Profile', style: JoynTypography.bodyLarge.copyWith(fontSize: 15)),
+                leading: const Icon(Icons.storefront_outlined,
+                    color: JoynColors.primary),
+                title: Text('Business Profile',
+                    style:
+                    JoynTypography.bodyLarge.copyWith(fontSize: 15)),
                 onTap: () {
                   Navigator.pop(context);
                   context.push('/business-profile');
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.logout_rounded, color: JoynColors.error),
-                title: Text('Log Out', style: JoynTypography.bodyLarge.copyWith(fontSize: 15, color: JoynColors.error)),
+                leading:
+                const Icon(Icons.logout_rounded, color: JoynColors.error),
+                title: Text('Log Out',
+                    style: JoynTypography.bodyLarge.copyWith(
+                        fontSize: 15, color: JoynColors.error)),
                 onTap: () async {
                   Navigator.pop(context);
                   await _handleLogout();
@@ -136,6 +145,83 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     }
   }
 
+  // ============================================================
+  // PAYMENT IN / OUT FLOW
+  // ============================================================
+  Future<void> _openPaymentFlow({required bool isPaymentOut}) async {
+    final repo = SalesRepository();
+
+    List<PartyModel> parties = [];
+    try {
+      parties = await repo.getParties();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to load parties: $e'),
+          backgroundColor: JoynColors.error,
+          behavior: SnackBarBehavior.floating,
+          shape:
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    if (parties.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('No parties found. Add a party first.'),
+          backgroundColor: JoynColors.primary,
+          behavior: SnackBarBehavior.floating,
+          shape:
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+      return;
+    }
+
+    final selected = await showModalBottomSheet<PartyModel>(
+      context: context,
+      backgroundColor: JoynColors.background,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => _PartyPickerSheet(
+        parties: parties,
+        title: isPaymentOut
+            ? 'Select Party — Payment Out'
+            : 'Select Party — Payment In',
+      ),
+    );
+
+    if (selected == null || !mounted) return;
+
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => PaymentInScreen(
+          party: selected,
+          isPaymentOut: isPaymentOut,
+        ),
+      ),
+    );
+
+    if (saved == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              isPaymentOut ? 'Payment Out recorded' : 'Payment In recorded'),
+          backgroundColor: JoynColors.primary,
+          behavior: SnackBarBehavior.floating,
+          shape:
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
@@ -146,6 +232,24 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         authState.selectedCompany!.isNotEmpty)
         ? authState.selectedCompany!
         : 'Welcome User';
+
+    Widget body;
+    switch (_bottomNavIndex) {
+      case 0:
+        body = _buildDashboardView();
+        break;
+      case 1:
+        body = const SaleOrdersListScreen();
+        break;
+      case 2:
+        body = const ReportsScreen();
+        break;
+      case 3:
+        body = _buildMoreView();
+        break;
+      default:
+        body = _buildDashboardView();
+    }
 
     return Scaffold(
       backgroundColor: _DashColors.pageBackground,
@@ -158,7 +262,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         title: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-
             InkWell(
               onTap: () {
                 context.push('/business-profile');
@@ -186,7 +289,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 ),
               ),
             ),
-
             InkWell(
               onTap: () {
                 context.push('/company-selection');
@@ -219,7 +321,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 ),
               ),
             ),
-
             InkWell(
               onTap: _showSettingsMenu,
               borderRadius: BorderRadius.circular(12),
@@ -248,112 +349,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           ],
         ),
       ),
-      body: Column(
-        children: [
-          const SizedBox(height: 8),
-
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Row(
-              children: [
-                Expanded(
-                  child: InkWell(
-                    onTap: () {
-                      setState(() {
-                        _selectedTabIndex = 0;
-                      });
-                    },
-                    child: Column(
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: Text(
-                            'Dashboard',
-                            style: JoynTypography.bodyLarge.copyWith(
-                              fontWeight: FontWeight.w700,
-                              color: _selectedTabIndex == 0
-                                  ? JoynColors.primary
-                                  : JoynColors.secondaryText,
-                              fontSize: 15,
-                              letterSpacing: -0.1,
-                            ),
-                          ),
-                        ),
-                        AnimatedContainer(
-                          duration: const Duration(milliseconds: 220),
-                          curve: Curves.easeOut,
-                          height: 3,
-                          decoration: BoxDecoration(
-                            color: _selectedTabIndex == 0
-                                ? JoynColors.primary
-                                : Colors.transparent,
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                Expanded(
-                  child: InkWell(
-                    onTap: () {
-                      setState(() {
-                        _selectedTabIndex = 1;
-                      });
-                    },
-                    child: Column(
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 4),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                'Overview',
-                                style: JoynTypography.bodyLarge.copyWith(
-                                  fontWeight: FontWeight.w500,
-                                  color: _selectedTabIndex == 1
-                                      ? JoynColors.primary
-                                      : JoynColors.secondaryText.withValues(alpha: 0.7),
-                                  fontSize: 15,
-                                  letterSpacing: -0.1,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                            ],
-                          ),
-                        ),
-                        AnimatedContainer(
-                          duration: const Duration(milliseconds: 220),
-                          curve: Curves.easeOut,
-                          height: 3,
-                          decoration: BoxDecoration(
-                            color: _selectedTabIndex == 1
-                                ? JoynColors.primary
-                                : Colors.transparent,
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          const Divider(color: JoynColors.border, height: 1, thickness: 1),
-
-          Expanded(
-            child: _selectedTabIndex == 0
-                ? (_bottomNavIndex == 0
-                ? _buildDashboardView()
-                : _buildComingSoonFeatureView(_getBottomNavLabel(_bottomNavIndex)))
-                : const OverviewScreen(),
-          ),
-        ],
-      ),
+      body: body,
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: _DashColors.pageBackground,
@@ -385,21 +381,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             child: BottomNavigationBar(
               currentIndex: _bottomNavIndex,
               onTap: (index) {
-
-                if (index == 2) {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const ReportsScreen()),
-                  );
-                  return;
-                }
-
                 setState(() {
                   _bottomNavIndex = index;
                 });
-                if (index != 0) {
-                  _showComingSoonSnackBar(_getBottomNavLabel(index));
-                }
               },
               type: BottomNavigationBarType.fixed,
               backgroundColor: Colors.transparent,
@@ -439,25 +423,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
-  String _getBottomNavLabel(int index) {
-    switch (index) {
-      case 1:
-        return 'Sales';
-      case 2:
-        return 'Inventory';
-      case 3:
-        return 'More';
-      default:
-        return 'Home';
-    }
-  }
-
+  // ============ DASHBOARD VIEW ============
 
   Widget _buildDashboardView() {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
       children: [
-
         _buildDashboardSectionCard(
           mainIcon: Icons.shopping_cart_outlined,
           title: 'Sale',
@@ -484,9 +455,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           subtitle: 'Manage your inventory',
           primaryActionLabel: 'Add',
           onPrimaryTap: () => context.push('/add-inventory'),
-          onArrowTap: () {
-            _showComingSoonSnackBar('Inventory');
-          },
+          onArrowTap: () => context.push('/manage-inventory'),
         ),
         const SizedBox(height: 12),
 
@@ -510,39 +479,32 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         ),
         const SizedBox(height: 12),
 
-        _buildDashboardSectionCard(
-          mainIcon: Icons.qr_code_scanner_rounded,
-          title: 'Barcode / QR Code',
-          subtitle: 'Generate barcode or QR code',
-          primaryActionLabel: 'Barcode',
-          onPrimaryTap: () async {
-            final result = await Navigator.push<LabelSizeResult>(
-              context,
-              MaterialPageRoute(builder: (_) => const NewLabelSizeScreen()),
-            );
-            if (result != null && context.mounted) {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => LabelEditorScreen(labelSize: result),
-                ),
-              );
-            }
-          },
-          onArrowTap: () async {
-            final result = await Navigator.push<LabelSizeResult>(
-              context,
-              MaterialPageRoute(builder: (_) => const NewLabelSizeScreen()),
-            );
-            if (result != null && context.mounted) {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => LabelEditorScreen(labelSize: result),
-                ),
-              );
-            }
-          },
+        // ============ BARCODE CARD ============
+        _buildBarcodeCard(),
+
+        const SizedBox(height: 16),
+
+        // ============ PAYMENT IN / OUT BUTTONS ============
+        Row(
+          children: [
+            Expanded(
+              child: _buildPaymentButton(
+                icon: Icons.arrow_downward_rounded,
+                label: 'Payment IN',
+                color: const Color(0xFF16A34A),
+                onTap: () => _openPaymentFlow(isPaymentOut: false),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildPaymentButton(
+                icon: Icons.arrow_upward_rounded,
+                label: 'Payment OUT',
+                color: const Color(0xFFC0202B),
+                onTap: () => _openPaymentFlow(isPaymentOut: true),
+              ),
+            ),
+          ],
         ),
 
         const SizedBox(height: 16),
@@ -550,78 +512,147 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
-  Widget _buildComingSoonFeatureView(String featureName) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 72,
-            height: 72,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  JoynColors.iconBackground,
-                  JoynColors.iconBackground.withValues(alpha: 0.6),
+  // ============ BARCODE CARD ============
+  Widget _buildBarcodeCard() {
+    return GestureDetector(
+      onTap: () async {
+        final result = await Navigator.push<LabelSizeResult>(
+          context,
+          MaterialPageRoute(builder: (_) => const NewLabelSizeScreen()),
+        );
+        if (result != null && context.mounted) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => LabelEditorScreen(labelSize: result),
+            ),
+          );
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.blue,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: _DashColors.cardBorder, width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 16,
+              offset: const Offset(0, 6),
+            ),
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.02),
+              blurRadius: 2,
+              offset: const Offset(0, 1),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 42,
+              height: 44,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '                              +',
+                    style: JoynTypography.bodyLarge.copyWith(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 17.5,
+                      letterSpacing: -0.1,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Generate new barcodes/QR code',
+                    style: JoynTypography.subtitle.copyWith(fontSize: 11.5),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ],
               ),
-              borderRadius: BorderRadius.circular(22),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.04),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
             ),
-            child: const Icon(
-              Icons.hourglass_empty_rounded,
-              size: 34,
-              color: JoynColors.primary,
-            ),
-          ),
-          const SizedBox(height: 18),
-          Text(
-            '$featureName Coming Soon',
-            style: JoynTypography.titleMedium.copyWith(
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
-              letterSpacing: -0.2,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 40),
-            child: Text(
-              'We are working hard to bring $featureName functionality soon.',
-              style: JoynTypography.subtitle.copyWith(
-                fontSize: 14,
-                height: 1.4,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
+  // ============ PAYMENT BUTTON ============
+  Widget _buildPaymentButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            color,
+            Color.lerp(color, Colors.black, 0.18) ?? color,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.35),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 22, color: Colors.white),
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: JoynTypography.bodyMedium.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                    fontSize: 15,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ============ DASHBOARD SECTION CARD ============
   Widget _buildDashboardSectionCard({
     required IconData mainIcon,
     required String title,
     required String subtitle,
     required String primaryActionLabel,
     VoidCallback? onPrimaryTap,
-    IconData? secondaryIcon,
-    VoidCallback? onSecondaryTap,
     VoidCallback? onArrowTap,
   }) {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: _DashColors.cardBackground,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: _DashColors.cardBorder, width: 1),
         boxShadow: [
@@ -687,26 +718,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             ),
           ),
           const SizedBox(width: 8),
-          if (secondaryIcon != null) ...[
-            Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: onSecondaryTap,
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    color: _DashColors.iconChipBackgroundStart,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: _DashColors.cardBorder),
-                  ),
-                  child: Icon(secondaryIcon, size: 16, color: JoynColors.primary),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-          ],
           Tooltip(
             message: primaryActionLabel,
             child: Material(
@@ -730,7 +741,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     borderRadius: BorderRadius.circular(14),
                     boxShadow: [
                       BoxShadow(
-                        color: _DashColors.addButtonStart.withValues(alpha: 0.35),
+                        color: _DashColors.addButtonStart
+                            .withValues(alpha: 0.35),
                         blurRadius: 12,
                         offset: const Offset(0, 4),
                       ),
@@ -799,6 +811,213 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // ============ MORE VIEW ============
+  Widget _buildMoreView() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(
+            Icons.more_horiz_rounded,
+            size: 72,
+            color: JoynColors.primary,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'More Options',
+            style: JoynTypography.titleMedium.copyWith(
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 40),
+            child: Text(
+              'Settings, Inventory, Parties, Items, and more will appear here.',
+              style: JoynTypography.subtitle.copyWith(fontSize: 14),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            onPressed: () => context.push('/manage-inventory'),
+            icon: const Icon(Icons.inventory_2_outlined),
+            label: const Text('Manage Inventory'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: JoynColors.primary,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          ElevatedButton.icon(
+            onPressed: () => context.push('/party-list'),
+            icon: const Icon(Icons.people_outline_rounded),
+            label: const Text('Manage Parties'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: JoynColors.primary,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          ElevatedButton.icon(
+            onPressed: () => context.push('/items-list'),
+            icon: const Icon(Icons.category_outlined),
+            label: const Text('Manage Items'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: JoynColors.primary,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================
+// PARTY PICKER SHEET
+// ============================================================
+class _PartyPickerSheet extends StatefulWidget {
+  const _PartyPickerSheet({required this.parties, required this.title});
+
+  final List<PartyModel> parties;
+  final String title;
+
+  @override
+  State<_PartyPickerSheet> createState() => _PartyPickerSheetState();
+}
+
+class _PartyPickerSheetState extends State<_PartyPickerSheet> {
+  final _searchController = TextEditingController();
+  late List<PartyModel> _filtered;
+
+  @override
+  void initState() {
+    super.initState();
+    _filtered = widget.parties;
+    _searchController.addListener(_onSearch);
+  }
+
+  void _onSearch() {
+    final q = _searchController.text.trim().toLowerCase();
+    setState(() {
+      _filtered = q.isEmpty
+          ? widget.parties
+          : widget.parties.where((p) {
+        return p.name.toLowerCase().contains(q) ||
+            p.contactNumber.toLowerCase().contains(q);
+      }).toList();
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final maxH = MediaQuery.of(context).size.height * 0.75;
+    return SafeArea(
+      child: Container(
+        constraints: BoxConstraints(maxHeight: maxH),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 36,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 14),
+              decoration: BoxDecoration(
+                color: JoynColors.border,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Text(
+              widget.title,
+              style: JoynTypography.titleMedium.copyWith(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Search party...',
+                prefixIcon: const Icon(Icons.search_rounded),
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(vertical: 4),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Flexible(
+              child: _filtered.isEmpty
+                  ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(
+                    'No parties found',
+                    style:
+                    JoynTypography.subtitle.copyWith(fontSize: 14),
+                  ),
+                ),
+              )
+                  : ListView.separated(
+                shrinkWrap: true,
+                itemCount: _filtered.length,
+                separatorBuilder: (_, __) => const Divider(height: 1),
+                itemBuilder: (context, i) {
+                  final p = _filtered[i];
+                  final phone = p.contactNumber;
+                  return ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor:
+                      JoynColors.primary.withValues(alpha: 0.1),
+                      child: const Icon(
+                        Icons.person_outline_rounded,
+                        color: JoynColors.primary,
+                      ),
+                    ),
+                    title: Text(
+                      p.name,
+                      style: JoynTypography.bodyLarge.copyWith(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    subtitle: phone.isNotEmpty ? Text(phone) : null,
+                    onTap: () => Navigator.of(context).pop(p),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

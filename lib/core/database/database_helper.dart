@@ -23,7 +23,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 5, // Changed from 2 to 5 to trigger table creation
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onDowngrade: onDatabaseDowngradeDelete,
@@ -108,7 +108,7 @@ class DatabaseHelper {
       )
     ''');
 
-    // Items/Inventory Table with ALL columns including photoPath
+    // Items/Inventory Table
     await db.execute('''
       CREATE TABLE items (
         id TEXT PRIMARY KEY,
@@ -130,6 +130,24 @@ class DatabaseHelper {
         taxRateLabel TEXT DEFAULT 'None',
         taxRatePercent REAL DEFAULT 0,
         stock INTEGER DEFAULT 0,
+        createdAt TEXT
+      )
+    ''');
+
+    // Categories Table
+    await db.execute('''
+      CREATE TABLE categories (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT UNIQUE NOT NULL,
+        createdAt TEXT
+      )
+    ''');
+
+    // Locations Table
+    await db.execute('''
+      CREATE TABLE locations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT UNIQUE NOT NULL,
         createdAt TEXT
       )
     ''');
@@ -186,8 +204,9 @@ class DatabaseHelper {
       )
     ''');
 
-    // Insert default roles
+    // Insert default roles and categories
     await _insertDefaultRoles(db);
+    await _insertDefaultCategories(db);
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -270,6 +289,33 @@ class DatabaseHelper {
         )
       ''');
     }
+
+    if (oldVersion < 5) {
+      try {
+        // Create categories table
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS categories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE NOT NULL,
+            createdAt TEXT
+          )
+        ''');
+
+        // Create locations table
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS locations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE NOT NULL,
+            createdAt TEXT
+          )
+        ''');
+
+        // Insert default categories
+        await _insertDefaultCategories(db);
+      } catch (e) {
+        debugPrint('Error upgrading database to version 5: $e');
+      }
+    }
   }
 
   Future<void> _insertDefaultRoles(Database db) async {
@@ -318,6 +364,29 @@ class DatabaseHelper {
     await batch.commit(noResult: true);
   }
 
+  Future<void> _insertDefaultCategories(Database db) async {
+    final now = DateTime.now().toIso8601String();
+    final defaultCategories = ['Grocery', 'Electronics', 'Garments', 'Stationery', 'Other'];
+    final defaultLocations = ['Select Location', 'Rack A1', 'Rack A2', 'Warehouse 1', 'Store Front'];
+
+    Batch batch = db.batch();
+    for (var category in defaultCategories) {
+      batch.insert(
+        'categories',
+        {'name': category, 'createdAt': now},
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
+    }
+    for (var location in defaultLocations) {
+      batch.insert(
+        'locations',
+        {'name': location, 'createdAt': now},
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
+    }
+    await batch.commit(noResult: true);
+  }
+
   // Method to force recreate database
   Future<void> forceRecreateDatabase() async {
     Directory documentsDirectory = await getApplicationDocumentsDirectory();
@@ -340,7 +409,7 @@ class DatabaseHelper {
     // Recreate with fresh schema
     _database = await openDatabase(
       path,
-      version: 1,
+      version: 5,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onDowngrade: onDatabaseDowngradeDelete,
