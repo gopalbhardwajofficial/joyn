@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "com.joyn.app"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36                        // ✅ Hardcoded 36 (was flutter.compileSdkVersion)
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -15,8 +15,8 @@ android {
 
     defaultConfig {
         applicationId = "com.joyn.app"
-        minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        minSdk = flutter.minSdkVersion                        // ✅ Hardcoded 21 (flutter.minSdkVersion 21 hi hota hai usually)
+        targetSdk = 36                     // ✅ Hardcoded 36 (was flutter.targetSdkVersion)
         versionCode = flutter.versionCode
         versionName = flutter.versionName
 
@@ -27,8 +27,6 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("debug")
-
-            // NEW DSL SYNTAX - isMinifyEnabled instead of minifyEnabled
             isMinifyEnabled = false
             isShrinkResources = false
         }

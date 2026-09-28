@@ -1,42 +1,377 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:joyn/features/Invoice/presentation/InvoicePreviewScreen.dart';
 import '../../../core/theme/joyn_colors.dart';
 import '../../../core/theme/joyn_typography.dart';
-import '../../../core/widgets/joyn_payment_mode_toggle.dart';
 import '../models/sales_models.dart';
 import '../data/sales_repository.dart';
 import 'widgets/add_order_item_dialog.dart';
 import '../../Inventory/presentation/add_new_party_screen.dart';
 import '../../Inventory/presentation/scan_code_screen.dart';
-import '../../Invoice/presentation/InvoicePreviewScreen.dart';
 
-class _Premium {
-  static List<BoxShadow> cardShadow = [
-    BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 20, offset: const Offset(0, 8)),
-    BoxShadow(color: Colors.black.withValues(alpha: 0.025), blurRadius: 4, offset: const Offset(0, 1)),
+
+// ==================== Premium Helpers ====================
+class _P {
+  static const double rSm = 10;
+  static const double rMd = 14;
+  static const double rLg = 18;
+  static const double rXl = 24;
+
+  static List<BoxShadow> soft = [
+    BoxShadow(
+        color: Colors.black.withValues(alpha: 0.04),
+        blurRadius: 16,
+        offset: const Offset(0, 4)),
+    BoxShadow(
+        color: Colors.black.withValues(alpha: 0.02),
+        blurRadius: 4,
+        offset: const Offset(0, 1)),
   ];
-  static List<BoxShadow> fieldShadow = [
-    BoxShadow(color: Colors.black.withValues(alpha: 0.035), blurRadius: 10, offset: const Offset(0, 3)),
+  static List<BoxShadow> glow(Color color, double opacity) => [
+    BoxShadow(
+        color: color.withValues(alpha: opacity),
+        blurRadius: 32,
+        spreadRadius: -4,
+        offset: const Offset(0, 12)),
+    BoxShadow(
+        color: color.withValues(alpha: opacity * 0.5),
+        blurRadius: 16,
+        offset: const Offset(0, 6)),
   ];
-  static List<BoxShadow> chipShadow(Color color) => [
-    BoxShadow(color: color.withValues(alpha: 0.28), blurRadius: 14, offset: const Offset(0, 6)),
-  ];
-  static List<BoxShadow> floatingShadow(Color color) => [
-    BoxShadow(color: color.withValues(alpha: 0.35), blurRadius: 16, offset: const Offset(0, 6)),
-  ];
-  static LinearGradient gradient(Color color) => LinearGradient(
-    begin: Alignment.topLeft, end: Alignment.bottomRight,
-    colors: [color, Color.lerp(color, Colors.black, 0.18) ?? color],
+
+  static LinearGradient get primaryGrad => LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [
+      Color.lerp(JoynColors.primary, Colors.white, 0.20) ??
+          JoynColors.primary,
+      JoynColors.primary,
+      Color.lerp(JoynColors.primary, Colors.black, 0.22) ??
+          JoynColors.primary,
+    ],
+    stops: const [0.0, 0.5, 1.0],
   );
-  static LinearGradient surfaceGradient = LinearGradient(
-    begin: Alignment.topLeft, end: Alignment.bottomRight,
-    colors: [Colors.white, JoynColors.background],
+  static LinearGradient get heroGrad => LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [
+      Color.lerp(JoynColors.primary, Colors.white, 0.05) ??
+          JoynColors.primary,
+      Color.lerp(JoynColors.primary, Colors.black, 0.15) ??
+          JoynColors.primary,
+    ],
   );
+  static LinearGradient get successGrad => LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [
+      Color.lerp(JoynColors.success, Colors.white, 0.15) ??
+          JoynColors.success,
+      JoynColors.success,
+    ],
+  );
+  static LinearGradient get itemHeaderGrad => LinearGradient(
+    begin: Alignment.centerLeft,
+    end: Alignment.centerRight,
+    colors: [
+      JoynColors.primary.withValues(alpha: 0.14),
+      JoynColors.primary.withValues(alpha: 0.04),
+    ],
+  );
+
+  static Color get infoSoft => JoynColors.primary.withValues(alpha: 0.08);
+  static Color get successSoft => JoynColors.success.withValues(alpha: 0.10);
+  static Color get errorSoft => JoynColors.error.withValues(alpha: 0.10);
+  static Color get warningSoft =>
+      const Color(0xFFF59E0B).withValues(alpha: 0.10);
+  static const Color warningColor = Color(0xFFF59E0B);
 }
 
+// ==================== Custom Painters ====================
+class DashedLinePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = JoynColors.secondaryText.withValues(alpha: 0.5)
+      ..strokeWidth = 1.2;
+    const dashWidth = 4.0;
+    const dashSpace = 4.0;
+    double startX = 0;
+    while (startX < size.width) {
+      canvas.drawLine(Offset(startX, size.height / 2),
+          Offset(startX + dashWidth, size.height / 2), paint);
+      startX += dashWidth + dashSpace;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class HeroWavePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.06)
+      ..style = PaintingStyle.fill;
+    final path = Path();
+    path.moveTo(0, size.height * 0.6);
+    path.quadraticBezierTo(size.width * 0.25, size.height * 0.35,
+        size.width * 0.5, size.height * 0.55);
+    path.quadraticBezierTo(size.width * 0.75, size.height * 0.75,
+        size.width, size.height * 0.4);
+    path.lineTo(size.width, size.height);
+    path.lineTo(0, size.height);
+    path.close();
+    canvas.drawPath(path, paint);
+
+    final paint2 = Paint()
+      ..color = Colors.white.withValues(alpha: 0.04)
+      ..style = PaintingStyle.fill;
+    final path2 = Path();
+    path2.moveTo(0, size.height * 0.75);
+    path2.quadraticBezierTo(size.width * 0.3, size.height * 0.55,
+        size.width * 0.6, size.height * 0.8);
+    path2.quadraticBezierTo(size.width * 0.85, size.height * 0.95,
+        size.width, size.height * 0.65);
+    path2.lineTo(size.width, size.height);
+    path2.lineTo(0, size.height);
+    path2.close();
+    canvas.drawPath(path2, paint2);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+// ==================== Animated Entry ====================
+class _AnimatedEntry extends StatefulWidget {
+  final Widget child;
+  final int delayMs;
+  const _AnimatedEntry({required this.child, this.delayMs = 0});
+
+  @override
+  State<_AnimatedEntry> createState() => _AnimatedEntryState();
+}
+
+class _AnimatedEntryState extends State<_AnimatedEntry>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _fade;
+  late Animation<Offset> _slide;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 550));
+    _fade = CurvedAnimation(parent: _controller, curve: Curves.easeOut);
+    _slide = Tween<Offset>(begin: const Offset(0, 0.06), end: Offset.zero)
+        .animate(
+        CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
+    Future.delayed(Duration(milliseconds: widget.delayMs), () {
+      if (mounted) _controller.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _fade,
+      child: SlideTransition(position: _slide, child: widget.child),
+    );
+  }
+}
+
+// ==================== Press Scale ====================
+class _PressScale extends StatefulWidget {
+  final Widget child;
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
+
+  const _PressScale({required this.child, this.onTap, this.onLongPress});
+
+  @override
+  State<_PressScale> createState() => _PressScaleState();
+}
+
+class _PressScaleState extends State<_PressScale> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) => setState(() => _pressed = false),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTap: widget.onTap,
+      onLongPress: widget.onLongPress,
+      child: AnimatedScale(
+        scale: _pressed ? 0.97 : 1.0,
+        duration: const Duration(milliseconds: 120),
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+// ==================== Animated Counter ====================
+class _AnimatedAmount extends StatelessWidget {
+  final double value;
+  final TextStyle style;
+
+  const _AnimatedAmount({required this.value, required this.style});
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: value),
+      duration: const Duration(milliseconds: 500),
+      curve: Curves.easeOutCubic,
+      builder: (context, val, _) {
+        return Text('₹${val.toStringAsFixed(2)}', style: style);
+      },
+    );
+  }
+}
+
+// ==================== Swipe-to-Delete ====================
+class _SwipeToDelete extends StatelessWidget {
+  final Widget child;
+  final VoidCallback onDelete;
+
+  const _SwipeToDelete({required this.child, required this.onDelete});
+
+  @override
+  Widget build(BuildContext context) {
+    return Dismissible(
+      key: UniqueKey(),
+      direction: DismissDirection.endToStart,
+      onDismissed: (_) => onDelete(),
+      background: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.only(right: 24),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              JoynColors.error.withValues(alpha: 0.85),
+              JoynColors.error,
+            ],
+          ),
+          borderRadius: BorderRadius.circular(_P.rMd),
+        ),
+        alignment: Alignment.centerRight,
+        child: const Icon(Icons.delete_outline_rounded,
+            color: Colors.white, size: 26),
+      ),
+      child: child,
+    );
+  }
+}
+
+// ==================== Section Card ====================
+class _SectionCard extends StatelessWidget {
+  final Widget child;
+  final EdgeInsetsGeometry? padding;
+  final EdgeInsetsGeometry? margin;
+
+  const _SectionCard({required this.child, this.padding, this.margin});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: margin ?? const EdgeInsets.symmetric(horizontal: 16),
+      padding: padding ?? const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(_P.rLg),
+        boxShadow: _P.soft,
+        border: Border.all(color: JoynColors.border.withValues(alpha: 0.5)),
+      ),
+      child: child,
+    );
+  }
+}
+
+// ==================== Payment Mode Toggle ====================
+enum PaymentMode { credit, cash }
+
+class _CreditCashToggle extends StatelessWidget {
+  final PaymentMode value;
+  final ValueChanged<PaymentMode> onChanged;
+
+  const _CreditCashToggle({required this.value, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _pill('Credit', value == PaymentMode.credit,
+                  () => onChanged(PaymentMode.credit)),
+          _pill('Cash', value == PaymentMode.cash,
+                  () => onChanged(PaymentMode.cash)),
+        ],
+      ),
+    );
+  }
+
+  Widget _pill(String label, bool selected, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+        decoration: BoxDecoration(
+          color: selected ? Colors.white : Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: selected
+              ? [
+            BoxShadow(
+                color: Colors.black.withValues(alpha: 0.12),
+                blurRadius: 10,
+                offset: const Offset(0, 3)),
+          ]
+              : null,
+        ),
+        child: Text(
+          label,
+          style: JoynTypography.caption.copyWith(
+            fontSize: 11.5,
+            fontWeight: FontWeight.w700,
+            color: selected
+                ? JoynColors.primary
+                : Colors.white.withValues(alpha: 0.85),
+            letterSpacing: 0.2,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ==================== MAIN SCREEN ====================
 class AddSaleOrderScreen extends StatefulWidget {
-  const AddSaleOrderScreen({super.key});
+  final SaleOrderModel? existingOrder;
+  const AddSaleOrderScreen({super.key, this.existingOrder});
 
   @override
   State<AddSaleOrderScreen> createState() => _AddSaleOrderScreenState();
@@ -44,28 +379,74 @@ class AddSaleOrderScreen extends StatefulWidget {
 
 class _AddSaleOrderScreenState extends State<AddSaleOrderScreen> {
   final SalesRepository _salesRepository = SalesRepository();
+  final ImagePicker _imagePicker = ImagePicker();
 
-  int _invoiceNo = 2;
+  bool _isEditing = false;
+  int _invoiceNo = 1;
   DateTime _selectedDate = DateTime.now();
   PaymentMode _paymentMode = PaymentMode.credit;
 
   final _customerController = TextEditingController();
   final _phoneController = TextEditingController();
   final _totalAmountController = TextEditingController();
+  final _receivedController = TextEditingController(text: '0.00');
+  final _noteController = TextEditingController();
+
+  double _receivedAmount = 0.00;
+  bool _isReceivedChecked = false;
+  bool _rateExclTax = true;
+  bool _isOneTimeCustomer = false;
+
+  String _paymentType = 'Cash';
+  String _stateOfSupply = 'Select State';
+  String? _selectedTerms;
+  bool _termsExpanded = false;
+
+  File? _pickedImage;
+  File? _pickedDocument;
 
   final List<OrderItemModel> _items = [];
-  bool _userEditedTotalManually = false;
-  bool _isOneTimeCustomer = false;
 
   List<PartyModel> _savedParties = [];
   List<InventoryItemModel> _savedItems = [];
 
+  double get _currentTotalAmount =>
+      _items.fold(0.0, (sum, item) => sum + item.total);
+
+  double get _currentBalanceDue {
+    final due = _currentTotalAmount - _receivedAmount;
+    return due < 0 ? 0 : due;
+  }
+
+  double get _subtotal => _items.fold(0.0, (sum, item) => sum + item.subtotal);
+  double get _totalDiscount =>
+      _items.fold(0.0, (sum, item) => sum + item.discountAmount);
+  double get _totalTax => _items.fold(0.0, (sum, item) => sum + item.taxAmount);
+  int get _totalQty => _items.fold(0, (sum, item) => sum + item.qty);
+
+  double get _completionProgress {
+    double p = 0;
+    if (_customerController.text.isNotEmpty) p += 0.4;
+    if (_items.isNotEmpty) p += 0.4;
+    if (_currentTotalAmount > 0) p += 0.2;
+    return p;
+  }
+
   @override
   void initState() {
     super.initState();
+    _isEditing = widget.existingOrder != null;
+
+    if (_isEditing) {
+      _prefillFromExisting(widget.existingOrder!);
+    }
+
     _loadSavedParties();
     _loadSavedItems();
-    _loadNextInvoiceNo();
+
+    if (!_isEditing) {
+      _loadNextInvoiceNo();
+    }
   }
 
   @override
@@ -73,14 +454,59 @@ class _AddSaleOrderScreenState extends State<AddSaleOrderScreen> {
     _customerController.dispose();
     _phoneController.dispose();
     _totalAmountController.dispose();
+    _receivedController.dispose();
+    _noteController.dispose();
     super.dispose();
+  }
+
+  DateTime _parseDateStr(String dateStr) {
+    try {
+      final parts = dateStr.split('/');
+      if (parts.length == 3) {
+        return DateTime(
+            int.parse(parts[2]), int.parse(parts[1]), int.parse(parts[0]));
+      }
+    } catch (_) {}
+    return DateTime.now();
+  }
+
+  void _prefillFromExisting(SaleOrderModel order) {
+    _invoiceNo = order.invoiceNo;
+    _selectedDate = _parseDateStr(order.date);
+
+    _paymentMode = order.paymentMode.toLowerCase() == 'credit'
+        ? PaymentMode.credit
+        : PaymentMode.cash;
+
+    _customerController.text = order.customerName;
+    _phoneController.text = order.customerPhone;
+    _isOneTimeCustomer = order.isOneTimeCustomer;
+    _receivedController.text = order.receivedAmount.toStringAsFixed(2);
+    _receivedAmount = order.receivedAmount;
+    _isReceivedChecked = order.receivedAmount > 0;
+    _paymentType = order.paymentType.isEmpty ? 'Cash' : order.paymentType;
+    _stateOfSupply = order.stateOfSupply.isEmpty
+        ? 'Select State'
+        : order.stateOfSupply;
+    _noteController.text = order.description;
+    _selectedTerms =
+    order.termsAndConditions.isEmpty ? null : order.termsAndConditions;
+
+    try {
+      _items.addAll(order.items.map((m) => OrderItemModel.fromJson(m)));
+    } catch (e) {
+      debugPrint('Error parsing items: $e');
+    }
+
+    _recalcTotal();
   }
 
   Future<void> _loadNextInvoiceNo() async {
     try {
       final orders = await _salesRepository.getSaleOrders();
       if (orders.isNotEmpty && mounted) {
-        final maxInvoiceNo = orders.map((o) => o.invoiceNo).reduce((a, b) => a > b ? a : b);
+        final maxInvoiceNo =
+        orders.map((o) => o.invoiceNo).reduce((a, b) => a > b ? a : b);
         setState(() => _invoiceNo = maxInvoiceNo + 1);
       }
     } catch (e) {
@@ -101,10 +527,11 @@ class _AddSaleOrderScreenState extends State<AddSaleOrderScreen> {
   Future<void> _loadSavedItems() async {
     try {
       final items = await _salesRepository.getItems();
+      debugPrint('🟢 SAVED ITEMS: ${items.length}');
       if (!mounted) return;
       setState(() => _savedItems = items);
     } catch (e) {
-      debugPrint('Error loading items: $e');
+      debugPrint('🔴 Error loading items: $e');
     }
   }
 
@@ -123,8 +550,6 @@ class _AddSaleOrderScreenState extends State<AddSaleOrderScreen> {
   String get _formattedDate =>
       '${_selectedDate.day.toString().padLeft(2, '0')}/${_selectedDate.month.toString().padLeft(2, '0')}/${_selectedDate.year}';
 
-  double get _itemsTotal => _items.fold(0, (sum, item) => sum + item.total);
-
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
       context: context,
@@ -140,37 +565,50 @@ class _AddSaleOrderScreenState extends State<AddSaleOrderScreen> {
     final result = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: JoynColors.background,
-        elevation: 8,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('Invoice Number', style: JoynTypography.titleMedium.copyWith(fontSize: 18, fontWeight: FontWeight.w800)),
+        title: const Text('Invoice Number'),
         content: TextField(
           controller: controller,
           autofocus: true,
           keyboardType: TextInputType.number,
-          decoration: InputDecoration(
-            hintText: 'Enter invoice number',
-            filled: true,
-            fillColor: JoynColors.chipBackground,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
-            ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          ),
+          decoration: const InputDecoration(hintText: 'Enter invoice number'),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
           TextButton(
-            onPressed: () => Navigator.pop(context, controller.text.trim()),
-            style: TextButton.styleFrom(foregroundColor: JoynColors.primary),
-            child: const Text('Update', style: TextStyle(fontWeight: FontWeight.w700)),
-          ),
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, controller.text.trim()),
+              child: const Text('Update')),
         ],
       ),
     );
     if (result != null && result.isNotEmpty) {
       setState(() => _invoiceNo = int.tryParse(result) ?? _invoiceNo);
+    }
+  }
+
+  Future<void> _pickImage() async {
+    try {
+      final XFile? image = await _imagePicker.pickImage(
+          source: ImageSource.gallery, imageQuality: 75);
+      if (image == null) return;
+      setState(() => _pickedImage = File(image.path));
+    } catch (e) {
+      debugPrint('Image pick error: $e');
+    }
+  }
+
+  Future<void> _pickDocument() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt'],
+      );
+      if (result == null || result.files.single.path == null) return;
+      setState(() => _pickedDocument = File(result.files.single.path!));
+    } catch (e) {
+      debugPrint('Document pick error: $e');
     }
   }
 
@@ -183,7 +621,6 @@ class _AddSaleOrderScreenState extends State<AddSaleOrderScreen> {
         isPurchaseOrder: false,
       ),
     );
-
     if (result != null) {
       setState(() {
         if (existing != null) {
@@ -192,9 +629,7 @@ class _AddSaleOrderScreenState extends State<AddSaleOrderScreen> {
         } else {
           _items.add(result);
         }
-        if (!_userEditedTotalManually) {
-          _totalAmountController.text = _itemsTotal.toStringAsFixed(2);
-        }
+        _recalcTotal();
       });
     }
   }
@@ -203,37 +638,19 @@ class _AddSaleOrderScreenState extends State<AddSaleOrderScreen> {
     HapticFeedback.lightImpact();
     setState(() {
       _items.removeWhere((i) => i.id == id);
-      if (!_userEditedTotalManually) {
-        _totalAmountController.text = _items.isEmpty ? '' : _itemsTotal.toStringAsFixed(2);
-      }
+      _recalcTotal();
     });
   }
 
-  void _toggleOneTimeCustomer(bool value) {
-    HapticFeedback.selectionClick();
-    setState(() {
-      _isOneTimeCustomer = value;
-      if (value) {
-        _customerController.clear();
-        _phoneController.clear();
-      }
-    });
-  }
-
-  void _applySelectedParty(PartyModel party) {
-    setState(() {
-      _customerController.text = party.name;
-      _phoneController.text = party.contactNumber;
-    });
+  void _recalcTotal() {
+    final total = _items.fold(0.0, (sum, item) => sum + item.total);
+    _totalAmountController.text = total.toStringAsFixed(2);
   }
 
   Future<void> _scanBarcodeAndAddItem() async {
     HapticFeedback.lightImpact();
-
     final barcode = await Navigator.of(context).push<String>(
-      MaterialPageRoute(builder: (_) => const ScanCodeScreen()),
-    );
-
+        MaterialPageRoute(builder: (_) => const ScanCodeScreen()));
     if (barcode == null || barcode.isEmpty || !mounted) return;
 
     InventoryItemModel? foundItem;
@@ -243,58 +660,21 @@ class _AddSaleOrderScreenState extends State<AddSaleOrderScreen> {
         break;
       }
     }
-
-    if (foundItem == null) {
-      try {
-        final dbItems = await _salesRepository.getItems();
-        for (final item in dbItems) {
-          if (item.barcode.isNotEmpty && item.barcode == barcode) {
-            foundItem = item;
-            break;
-          }
-        }
-      } catch (e) {
-        debugPrint('Error searching item: $e');
-      }
-    }
-
     if (foundItem != null) {
       final newItem = OrderItemModel(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         itemName: foundItem.name,
         category: foundItem.category,
-        unitPrice: foundItem.sellingPrice != 0 ? foundItem.sellingPrice : foundItem.purchasePrice,
+        unitPrice: foundItem.sellingPrice != 0
+            ? foundItem.sellingPrice
+            : foundItem.purchasePrice,
         qty: 1,
         unit: foundItem.unit,
       );
-
       setState(() {
         _items.add(newItem);
-        if (!_userEditedTotalManually) {
-          _totalAmountController.text = _itemsTotal.toStringAsFixed(2);
-        }
+        _recalcTotal();
       });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${foundItem.name} added to items'),
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: JoynColors.success,
-          margin: const EdgeInsets.all(16),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('No item found for barcode "$barcode"'),
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: JoynColors.error,
-          margin: const EdgeInsets.all(16),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        ),
-      );
     }
   }
 
@@ -303,7 +683,8 @@ class _AddSaleOrderScreenState extends State<AddSaleOrderScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: JoynColors.background,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
       builder: (sheetContext) {
         String query = '';
         return StatefulBuilder(
@@ -320,8 +701,8 @@ class _AddSaleOrderScreenState extends State<AddSaleOrderScreen> {
                 padding: EdgeInsets.only(
                   left: 20,
                   right: 20,
-                  top: 12,
-                  bottom: MediaQuery.of(context).viewInsets.bottom + 12,
+                  top: 8,
+                  bottom: MediaQuery.of(context).viewInsets.bottom + 16,
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -329,149 +710,206 @@ class _AddSaleOrderScreenState extends State<AddSaleOrderScreen> {
                   children: [
                     Center(
                       child: Container(
-                        width: 40,
-                        height: 4.5,
-                        margin: const EdgeInsets.only(bottom: 16),
-                        decoration: BoxDecoration(color: JoynColors.border, borderRadius: BorderRadius.circular(3)),
+                        width: 44,
+                        height: 4,
+                        margin: const EdgeInsets.only(bottom: 20),
+                        decoration: BoxDecoration(
+                            color: JoynColors.border,
+                            borderRadius: BorderRadius.circular(3)),
                       ),
                     ),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text('Select Customer', style: JoynTypography.titleMedium.copyWith(fontSize: 17, fontWeight: FontWeight.w800)),
+                        Text('Select Customer',
+                            style: JoynTypography.titleMedium.copyWith(
+                                fontSize: 20, fontWeight: FontWeight.w800)),
                         IconButton(
-                          icon: const Icon(Icons.close_rounded),
+                          icon: const Icon(Icons.close, size: 22),
                           onPressed: () => Navigator.pop(sheetContext),
                         ),
                       ],
                     ),
                     const SizedBox(height: 4),
                     TextField(
-                      autofocus: false,
                       onChanged: (v) => setSheetState(() => query = v),
                       decoration: InputDecoration(
                         hintText: 'Search by name or category',
-                        prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                        prefixIcon: const Icon(Icons.search,
+                            size: 20, color: JoynColors.secondaryText),
                         filled: true,
                         fillColor: JoynColors.chipBackground,
                         border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: BorderSide.none,
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 14),
+                            borderRadius: BorderRadius.circular(_P.rMd),
+                            borderSide: BorderSide.none),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 14),
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 14),
                     InkWell(
                       onTap: () async {
                         Navigator.pop(sheetContext);
-                        final result = await Navigator.of(context).push<Map<String, dynamic>>(
-                          MaterialPageRoute(builder: (_) => const AddNewPartyScreen()),
-                        );
+                        final result = await Navigator.of(context)
+                            .push<Map<String, dynamic>>(MaterialPageRoute(
+                            builder: (_) => const AddNewPartyScreen()));
                         if (result != null) {
                           final newParty = PartyModel(
-                            id: DateTime.now().millisecondsSinceEpoch.toString(),
+                            id: DateTime.now()
+                                .millisecondsSinceEpoch
+                                .toString(),
                             name: (result['name'] ?? '').toString(),
                             category: (result['category'] ?? '').toString(),
-                            contactNumber: (result['contactNumber'] ?? '').toString(),
+                            contactNumber:
+                            (result['contactNumber'] ?? '').toString(),
                             createdAt: DateTime.now(),
                           );
                           await _salesRepository.insertParty(newParty);
                           _loadSavedParties();
-                          _applySelectedParty(newParty);
+                          setState(() {
+                            _customerController.text = newParty.name;
+                            _phoneController.text = newParty.contactNumber;
+                          });
                         }
                       },
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(_P.rMd),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+                        padding: const EdgeInsets.symmetric(
+                            vertical: 14, horizontal: 16),
                         decoration: BoxDecoration(
-                          color: JoynColors.primary.withValues(alpha: 0.06),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: JoynColors.primary.withValues(alpha: 0.25), width: 1.2),
+                          color: _P.infoSoft,
+                          borderRadius: BorderRadius.circular(_P.rMd),
+                          border: Border.all(
+                              color: JoynColors.primary.withValues(alpha: 0.25),
+                              width: 1.5),
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.person_add_alt_1_rounded, size: 18, color: JoynColors.primary),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Add New Party',
-                              style: JoynTypography.bodyMedium.copyWith(fontWeight: FontWeight.w700, color: JoynColors.primary, fontSize: 13.5),
+                            Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                gradient: _P.primaryGrad,
+                                borderRadius: BorderRadius.circular(8),
+                                boxShadow:
+                                _P.glow(JoynColors.primary, 0.3),
+                              ),
+                              child: const Icon(Icons.person_add_alt_1,
+                                  size: 14, color: Colors.white),
                             ),
+                            const SizedBox(width: 10),
+                            Text('Add New Party',
+                                style: JoynTypography.bodyMedium.copyWith(
+                                    color: JoynColors.primary,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 14)),
                           ],
                         ),
                       ),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 14),
                     if (filtered.isEmpty)
                       Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 32),
+                        padding: const EdgeInsets.symmetric(vertical: 40),
                         child: Center(
-                          child: Text(
-                            _savedParties.isEmpty ? 'No saved parties yet' : 'No match found',
-                            style: JoynTypography.subtitle.copyWith(fontSize: 13.5),
+                          child: Column(
+                            children: [
+                              Icon(Icons.person_search_outlined,
+                                  size: 48, color: JoynColors.secondaryText),
+                              const SizedBox(height: 8),
+                              Text('No saved parties',
+                                  style: JoynTypography.subtitle.copyWith(
+                                      fontSize: 13.5)),
+                            ],
                           ),
                         ),
                       )
                     else
                       ConstrainedBox(
-                        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.45),
+                        constraints: BoxConstraints(
+                            maxHeight:
+                            MediaQuery.of(context).size.height * 0.45),
                         child: ListView.builder(
                           shrinkWrap: true,
                           itemCount: filtered.length,
                           itemBuilder: (context, index) {
                             final party = filtered[index];
-                            return InkWell(
-                              onTap: () => Navigator.pop(sheetContext, party),
-                              borderRadius: BorderRadius.circular(14),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      width: 40,
-                                      height: 40,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        gradient: LinearGradient(
-                                          begin: Alignment.topLeft,
-                                          end: Alignment.bottomRight,
-                                          colors: [
-                                            JoynColors.primary.withValues(alpha: 0.10),
-                                            JoynColors.primary.withValues(alpha: 0.20),
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: InkWell(
+                                onTap: () =>
+                                    Navigator.pop(sheetContext, party),
+                                borderRadius:
+                                BorderRadius.circular(_P.rMd),
+                                child: Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: JoynColors.chipBackground,
+                                    borderRadius:
+                                    BorderRadius.circular(_P.rMd),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 44,
+                                        height: 44,
+                                        decoration: BoxDecoration(
+                                          gradient: _P.primaryGrad,
+                                          shape: BoxShape.circle,
+                                          boxShadow: _P.glow(
+                                              JoynColors.primary, 0.25),
+                                        ),
+                                        alignment: Alignment.center,
+                                        child: Text(
+                                          party.name.isNotEmpty
+                                              ? party.name[0].toUpperCase()
+                                              : '?',
+                                          style: const TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.w800,
+                                              fontSize: 16),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                          children: [
+                                            Text(party.name,
+                                                maxLines: 1,
+                                                overflow:
+                                                TextOverflow.ellipsis,
+                                                style: JoynTypography
+                                                    .bodyMedium
+                                                    .copyWith(
+                                                    fontWeight:
+                                                    FontWeight.w700,
+                                                    fontSize: 15)),
+                                            if (party.category.isNotEmpty)
+                                              Text(party.category,
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow
+                                                      .ellipsis,
+                                                  style: JoynTypography
+                                                      .caption
+                                                      .copyWith(
+                                                      fontSize: 12,
+                                                      color: JoynColors
+                                                          .secondaryText)),
                                           ],
                                         ),
                                       ),
-                                      alignment: Alignment.center,
-                                      child: Text(
-                                        party.name.isNotEmpty ? party.name[0].toUpperCase() : '?',
-                                        style: JoynTypography.bodyLarge.copyWith(fontWeight: FontWeight.w800, color: JoynColors.primary),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(party.name, style: JoynTypography.bodyMedium.copyWith(fontWeight: FontWeight.w700, fontSize: 14.5)),
-                                          if (party.category.isNotEmpty)
-                                            Padding(
-                                              padding: const EdgeInsets.only(top: 2),
-                                              child: Text(
-                                                party.category,
-                                                style: JoynTypography.caption.copyWith(fontSize: 11.5, color: JoynColors.secondaryText),
-                                              ),
-                                            ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
+                                      const Icon(Icons.chevron_right,
+                                          color: JoynColors.secondaryText,
+                                          size: 20),
+                                    ],
+                                  ),
                                 ),
                               ),
                             );
                           },
                         ),
                       ),
-                    const SizedBox(height: 8),
                   ],
                 ),
               ),
@@ -482,33 +920,235 @@ class _AddSaleOrderScreenState extends State<AddSaleOrderScreen> {
     );
 
     if (selected != null) {
-      _applySelectedParty(selected);
+      setState(() {
+        _customerController.text = selected.name;
+        _phoneController.text = selected.contactNumber;
+      });
     }
   }
 
-  Future<void> _save({bool andNew = false}) async {
-    if (!_isOneTimeCustomer && _customerController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Customer name is required'),
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: JoynColors.error,
-          margin: const EdgeInsets.all(16),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+  Future<void> _openPaymentTypePicker() async {
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: JoynColors.background,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 44,
+              height: 4,
+              decoration: BoxDecoration(
+                  color: JoynColors.border,
+                  borderRadius: BorderRadius.circular(3)),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Row(
+                children: [
+                  Text('Payment Type',
+                      style: JoynTypography.titleMedium.copyWith(
+                          fontSize: 18, fontWeight: FontWeight.w800)),
+                  const Spacer(),
+                  IconButton(
+                      icon: const Icon(Icons.close, size: 22),
+                      onPressed: () => Navigator.pop(context)),
+                ],
+              ),
+            ),
+            const Divider(height: 1, color: Color(0xFFF1F5F9)),
+            _paymentOption('Cash', Icons.currency_rupee, JoynColors.success),
+            _paymentOption('Cheque', Icons.receipt_long, _P.warningColor),
+            _paymentOption(
+                'Bank Transfer', Icons.account_balance, JoynColors.primary),
+            const Divider(height: 1, color: Color(0xFFF1F5F9)),
+            ListTile(
+              leading: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: _P.infoSoft,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.add,
+                    color: JoynColors.primary, size: 18),
+              ),
+              title: Text('Add Bank A/c',
+                  style: JoynTypography.bodyMedium.copyWith(
+                      color: JoynColors.primary,
+                      fontWeight: FontWeight.w700)),
+              onTap: () => Navigator.pop(context, 'Bank A/c'),
+            ),
+            const SizedBox(height: 8),
+          ],
         ),
-      );
+      ),
+    );
+    if (result != null) setState(() => _paymentType = result);
+  }
+
+  Widget _paymentOption(String label, IconData icon, Color color) {
+    return ListTile(
+      leading: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Icon(icon, color: color, size: 20),
+      ),
+      title: Text(label,
+          style:
+          JoynTypography.bodyMedium.copyWith(fontWeight: FontWeight.w600)),
+      onTap: () => Navigator.pop(context, label),
+    );
+  }
+
+  Future<void> _openStateOfSupplyPicker() async {
+    final states = [
+      'Select State',
+      'Andhra Pradesh',
+      'Delhi',
+      'Gujarat',
+      'Karnataka',
+      'Maharashtra',
+      'Punjab',
+      'Tamil Nadu',
+      'Uttar Pradesh',
+      'West Bengal'
+    ];
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: JoynColors.background,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 44,
+              height: 4,
+              decoration: BoxDecoration(
+                  color: JoynColors.border,
+                  borderRadius: BorderRadius.circular(3)),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Text('State of Supply',
+                  style: JoynTypography.titleMedium.copyWith(
+                      fontSize: 18, fontWeight: FontWeight.w800)),
+            ),
+            const Divider(height: 1, color: Color(0xFFF1F5F9)),
+            Flexible(
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: states.length,
+                itemBuilder: (context, i) => ListTile(
+                  title: Text(states[i]),
+                  trailing: states[i] == _stateOfSupply
+                      ? Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      gradient: _P.primaryGrad,
+                      shape: BoxShape.circle,
+                      boxShadow: _P.glow(JoynColors.primary, 0.3),
+                    ),
+                    child: const Icon(Icons.check,
+                        color: Colors.white, size: 14),
+                  )
+                      : null,
+                  onTap: () => Navigator.pop(context, states[i]),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (result != null) setState(() => _stateOfSupply = result);
+  }
+
+  Future<void> _openTermsPicker() async {
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: JoynColors.background,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 44,
+              height: 4,
+              decoration: BoxDecoration(
+                  color: JoynColors.border,
+                  borderRadius: BorderRadius.circular(3)),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Text('Terms & Conditions',
+                  style: JoynTypography.titleMedium.copyWith(
+                      fontSize: 18, fontWeight: FontWeight.w800)),
+            ),
+            const Divider(height: 1, color: Color(0xFFF1F5F9)),
+            ListTile(
+              leading: const Icon(Icons.bookmark_outline),
+              title: const Text('Select saved T&C'),
+              onTap: () => Navigator.pop(context, 'Standard T&C'),
+            ),
+            ListTile(
+              leading:
+              const Icon(Icons.edit_note, color: JoynColors.primary),
+              title: Text('Add terms & Conditions',
+                  style: JoynTypography.bodyMedium.copyWith(
+                      color: JoynColors.primary,
+                      fontWeight: FontWeight.w700)),
+              onTap: () => Navigator.pop(context, 'Custom T&C'),
+            ),
+            const Divider(height: 1, color: Color(0xFFF1F5F9)),
+            ListTile(
+              leading: const Icon(Icons.block_outlined),
+              title: const Text('None'),
+              onTap: () => Navigator.pop(context, 'None'),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (result != null) setState(() => _selectedTerms = result);
+  }
+
+  Future<void> _save({bool andNew = false}) async {
+    if (_customerController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Customer name is required'),
+        behavior: SnackBarBehavior.floating,
+      ));
       return;
     }
 
+    final total = _items.fold(0.0, (sum, item) => sum + item.total);
+
     final saleOrder = SaleOrderModel(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      id: _isEditing
+          ? widget.existingOrder!.id
+          : DateTime.now().millisecondsSinceEpoch.toString(),
       invoiceNo: _invoiceNo,
       date: _formattedDate,
       paymentMode: _paymentMode == PaymentMode.credit ? 'Credit' : 'Cash',
       isOneTimeCustomer: _isOneTimeCustomer,
-      customerName: _isOneTimeCustomer ? 'One Time Customer' : _customerController.text.trim(),
-      customerPhone: _isOneTimeCustomer ? '' : _phoneController.text.trim(),
-      items: _items.map((i) => {
+      customerName: _customerController.text.trim(),
+      customerPhone: _phoneController.text.trim(),
+      items: _items
+          .map((i) => {
         'name': i.itemName,
         'category': i.category,
         'unitPrice': i.unitPrice,
@@ -518,58 +1158,130 @@ class _AddSaleOrderScreenState extends State<AddSaleOrderScreen> {
         'taxRate': i.taxRate,
         'taxInclusive': i.taxInclusive ? 1 : 0,
         'total': i.total,
-        'unit': i.unit, // NEW
-      }).toList(),
-      totalAmount: double.tryParse(_totalAmountController.text.trim()) ?? 0,
-      createdAt: DateTime.now(),
+        'unit': i.unit,
+      })
+          .toList(),
+      totalAmount: total,
+      receivedAmount: _receivedAmount,
+      paymentType: _paymentType,
+      stateOfSupply: _stateOfSupply,
+      description: _noteController.text.trim(),
+      termsAndConditions: _selectedTerms ?? '',
+      createdAt: _isEditing
+          ? widget.existingOrder!.createdAt
+          : DateTime.now(),
     );
 
-    await _salesRepository.insertSaleOrder(saleOrder);
+    if (_isEditing) {
+      await _salesRepository.updateSaleOrder(saleOrder);
+    } else {
+      await _salesRepository.insertSaleOrder(saleOrder);
+    }
 
     HapticFeedback.mediumImpact();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Sale saved successfully!'),
-        backgroundColor: JoynColors.primary,
-        behavior: SnackBarBehavior.floating,
-        elevation: 6,
-        margin: const EdgeInsets.all(16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      ),
-    );
+    if (!mounted) return;
 
-    if (andNew) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(_isEditing
+          ? 'Sale updated successfully!'
+          : 'Sale saved successfully!'),
+      backgroundColor: JoynColors.success,
+      behavior: SnackBarBehavior.floating,
+      margin: const EdgeInsets.all(16),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+    ));
+
+    if (andNew && !_isEditing) {
       setState(() {
         _invoiceNo++;
         _customerController.clear();
         _phoneController.clear();
         _totalAmountController.clear();
+        _receivedController.text = "0.00";
+        _receivedAmount = 0.00;
+        _noteController.clear();
         _items.clear();
-        _userEditedTotalManually = false;
+        _isReceivedChecked = false;
         _isOneTimeCustomer = false;
+        _selectedTerms = null;
+        _stateOfSupply = 'Select State';
+        _pickedImage = null;
+        _pickedDocument = null;
       });
+      _openInvoicePreview(saleOrder, popAfterClose: false);
     } else {
-      context.pop();
+      _openInvoicePreview(saleOrder, popAfterClose: true);
     }
+  }
+
+  // ==================== Invoice Preview ====================
+  void _openInvoicePreview(SaleOrderModel order,
+      {bool popAfterClose = false}) {
+    Navigator.of(context)
+        .push(MaterialPageRoute(
+      builder: (_) => InvoicePreviewScreen(
+        data: InvoicePreviewData(
+          invoiceNo: order.invoiceNo,
+          date: order.date,
+          customerName: order.customerName.isEmpty
+              ? 'One Time Customer'
+              : order.customerName,
+          customerPhone: order.customerPhone,
+          items: List<OrderItemModel>.from(_items),
+          totalAmount: order.totalAmount,
+          receivedAmount: order.receivedAmount,
+          businessName: 'Your Business',
+          businessPhone: '9958761582',
+          businessEmail: 'you@example.com',
+          title: 'Tax Invoice',
+        ),
+      ),
+    ))
+        .then((_) {
+      if (popAfterClose && mounted) {
+        Navigator.of(context).pop(order);
+      }
+    });
   }
 
   void _showMoreOptions() {
     showModalBottomSheet(
       context: context,
       backgroundColor: JoynColors.background,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
       builder: (context) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 44,
+              height: 4,
+              decoration: BoxDecoration(
+                  color: JoynColors.border,
+                  borderRadius: BorderRadius.circular(3)),
+            ),
             ListTile(
-              leading: const Icon(Icons.delete_outline_rounded, color: JoynColors.error),
-              title: Text('Discard', style: JoynTypography.bodyLarge.copyWith(fontSize: 15)),
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: _P.errorSoft,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(Icons.delete_outline,
+                    color: JoynColors.error, size: 20),
+              ),
+              title: Text('Discard',
+                  style: JoynTypography.bodyMedium.copyWith(
+                      color: JoynColors.error,
+                      fontWeight: FontWeight.w700)),
               onTap: () {
                 Navigator.pop(context);
-                context.pop();
+                Navigator.of(context).pop();
               },
             ),
+            const SizedBox(height: 8),
           ],
         ),
       ),
@@ -580,119 +1292,133 @@ class _AddSaleOrderScreenState extends State<AddSaleOrderScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: JoynColors.background,
-      appBar: AppBar(
-        elevation: 0,
-        scrolledUnderElevation: 0.5,
-        backgroundColor: JoynColors.background,
-        leading: IconButton(
-          icon: Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: JoynColors.chipBackground,
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.arrow_back_rounded, size: 18),
-          ),
-          onPressed: () => context.pop(),
-        ),
-        centerTitle: true,
-        title: Text(
-          'Sale',
-          style: JoynTypography.titleMedium.copyWith(
-            fontSize: 18,
-            fontWeight: FontWeight.w800,
-            letterSpacing: -0.2,
-          ),
-        ),
-        actions: [
-          IconButton(
-            onPressed: _scanBarcodeAndAddItem,
-            icon: Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: JoynColors.primary.withValues(alpha: 0.08),
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: JoynColors.primary.withValues(alpha: 0.2),
-                  width: 1,
-                ),
-              ),
-              child: const Icon(Icons.qr_code_scanner_rounded, size: 18, color: JoynColors.primary),
-            ),
-          ),
-          JoynPaymentModeToggle(
-            value: _paymentMode,
-            onChanged: (val) => setState(() => _paymentMode = val),
-          ),
-          const SizedBox(width: 8),
-          IconButton(
-            icon: Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: JoynColors.chipBackground,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.settings_outlined, size: 18, color: JoynColors.secondaryText),
-            ),
-            onPressed: () {},
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+      body: Column(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              padding: EdgeInsets.zero,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _buildSectionHeader(1, 'Sale Details', Icons.receipt_long_outlined),
-                  const SizedBox(height: 16),
-                  _buildSaleDetailsCard(),
-                  const SizedBox(height: 30),
-                  _buildSectionHeader(2, 'Items', Icons.inventory_2_outlined),
-                  const SizedBox(height: 16),
-                  _buildItemsCard(),
+                  _buildHeroHeader(),
+                  const SizedBox(height: 12),
+                  _AnimatedEntry(delayMs: 0, child: _buildInfoCard()),
+                  const SizedBox(height: 14),
+                  _AnimatedEntry(delayMs: 60, child: _buildCustomerCard()),
+                  const SizedBox(height: 14),
+                  _AnimatedEntry(delayMs: 120, child: _buildItemsSection()),
+                  const SizedBox(height: 14),
+                  _AnimatedEntry(
+                      delayMs: 180, child: _buildPaymentSummaryCard()),
+                  const SizedBox(height: 14),
+                  _AnimatedEntry(
+                      delayMs: 240, child: _buildMoreDetailsCard()),
                   const SizedBox(height: 16),
                 ],
               ),
             ),
-            Container(
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border(top: BorderSide(color: JoynColors.border, width: 1)),
-                boxShadow: _Premium.fieldShadow,
-              ),
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          ),
+          _buildBottomBar(),
+        ],
+      ),
+    );
+  }
+
+  // ==================== Hero Header ====================
+  Widget _buildHeroHeader() {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: _P.heroGrad,
+        boxShadow: _P.glow(JoynColors.primary, 0.25),
+        borderRadius: const BorderRadius.only(
+          bottomLeft: Radius.circular(22),
+          bottomRight: Radius.circular(22),
+        ),
+      ),
+      child: Stack(
+        children: [
+          Positioned.fill(child: CustomPaint(painter: HeroWavePainter())),
+          SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    'Total Amount',
-                    style: JoynTypography.bodyLarge.copyWith(fontSize: 16, fontWeight: FontWeight.w700, color: JoynColors.primary),
-                  ),
                   Row(
                     children: [
-                      Text('₹', style: JoynTypography.bodyLarge.copyWith(fontSize: 16, fontWeight: FontWeight.w800, color: JoynColors.primary)),
+                      _heroIconBtn(
+                          Icons.arrow_back, () => Navigator.of(context).pop()),
+                      const Spacer(),
+                      _CreditCashToggle(
+                          value: _paymentMode,
+                          onChanged: (v) =>
+                              setState(() => _paymentMode = v)),
                       const SizedBox(width: 6),
-                      SizedBox(
-                        width: 110,
-                        child: TextField(
-                          controller: _totalAmountController,
-                          textAlign: TextAlign.right,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          style: JoynTypography.bodyLarge.copyWith(fontSize: 16, fontWeight: FontWeight.w800, color: JoynColors.primary),
-                          decoration: InputDecoration(
-                            hintText: '0.00',
-                            hintStyle: JoynTypography.bodyLarge.copyWith(fontSize: 16, color: JoynColors.secondaryText.withValues(alpha: 0.4)),
-                            isDense: true,
-                            contentPadding: EdgeInsets.zero,
-                            border: const UnderlineInputBorder(borderSide: BorderSide(color: JoynColors.border)),
-                            focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: JoynColors.primary, width: 1.5)),
-                            enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: JoynColors.border)),
-                          ),
-                          onChanged: (_) => _userEditedTotalManually = true,
+                      _heroIconBtn(Icons.settings_outlined, _showMoreOptions),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(_isEditing ? 'Edit Sale' : 'New Sale',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -0.4,
+                                )),
+                            const SizedBox(height: 2),
+                            Text('Invoice #$_invoiceNo  •  $_formattedDate',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.75),
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w600,
+                                )),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      _buildProgressRing(),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildHeroStat(
+                          icon: Icons.inventory_2_outlined,
+                          label: 'Items',
+                          value: '${_items.length}',
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: _buildHeroStat(
+                          icon: Icons.receipt_long_outlined,
+                          label: 'Total',
+                          value:
+                          '₹${_currentTotalAmount.toStringAsFixed(0)}',
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: _buildHeroStat(
+                          icon: Icons.trending_up,
+                          label: 'Due',
+                          value:
+                          '₹${_currentBalanceDue.toStringAsFixed(0)}',
+                          danger: _currentBalanceDue > 0,
                         ),
                       ),
                     ],
@@ -700,125 +1426,434 @@ class _AddSaleOrderScreenState extends State<AddSaleOrderScreen> {
                 ],
               ),
             ),
-            Container(
-              decoration: const BoxDecoration(
-                color: JoynColors.background,
-                border: Border(top: BorderSide(color: JoynColors.border, width: 1)),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextButton(
-                      onPressed: () => _save(andNew: true),
-                      child: Text(
-                        'Save & New',
-                        style: JoynTypography.bodyLarge.copyWith(fontSize: 15, fontWeight: FontWeight.w600, color: JoynColors.secondaryText),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    flex: 2,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: _Premium.floatingShadow(JoynColors.primary),
-                      ),
-                      child: SizedBox(
-                        height: 46,
-                        child: ElevatedButton(
-                          onPressed: () async {
-                            await _save();
-                            if (!mounted) return;
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => InvoicePreviewScreen(
-                                  data: InvoicePreviewData(
-                                    invoiceNo: _invoiceNo,
-                                    date: _formattedDate,
-                                    customerName: _isOneTimeCustomer ? 'One Time Customer' : _customerController.text.trim(),
-                                    customerPhone: _isOneTimeCustomer ? '' : _phoneController.text.trim(),
-                                    items: _items,
-                                    totalAmount: double.tryParse(_totalAmountController.text.trim()) ?? 0,
-                                    businessName: 'Your Business Name',
-                                    businessPhone: '9958761582',
-                                    businessEmail: 'you@example.com',
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: JoynColors.primary,
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          ),
-                          child: Text('Save', style: JoynTypography.buttonText.copyWith(fontSize: 15)),
-                        ),
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: _showMoreOptions,
-                    icon: const Icon(Icons.more_vert_rounded, color: JoynColors.secondaryText),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
-  // ============ UI Helpers ============
+  Widget _heroIconBtn(IconData icon, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(7),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.15),
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+        ),
+        child: Icon(icon, color: Colors.white, size: 17),
+      ),
+    );
+  }
 
-  Widget _buildSectionHeader(int number, String title, IconData icon) {
+  Widget _buildProgressRing() {
+    return SizedBox(
+      width: 42,
+      height: 42,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          SizedBox(
+            width: 42,
+            height: 42,
+            child: CircularProgressIndicator(
+              value: _completionProgress,
+              strokeWidth: 3,
+              backgroundColor: Colors.white.withValues(alpha: 0.2),
+              valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+              strokeCap: StrokeCap.round,
+            ),
+          ),
+          Text(
+            '${(_completionProgress * 100).toInt()}%',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeroStat({
+    required IconData icon,
+    required String label,
+    required String value,
+    bool danger = false,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(icon,
+                  size: 10, color: Colors.white.withValues(alpha: 0.85)),
+              const SizedBox(width: 3),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.75),
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(value,
+                maxLines: 1,
+                style: TextStyle(
+                  color: danger ? const Color(0xFFFFB4AB) : Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.2,
+                )),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ==================== Info Card ====================
+  Widget _buildInfoCard() {
+    return _SectionCard(
+      padding: const EdgeInsets.all(14),
+      child: Row(
+        children: [
+          Expanded(
+            child: _PressScale(
+              onTap: _editInvoiceNo,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        gradient: _P.primaryGrad,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: _P.glow(JoynColors.primary, 0.3),
+                      ),
+                      child: const Icon(Icons.tag_rounded,
+                          size: 18, color: Colors.white),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Invoice No.',
+                              style: JoynTypography.caption.copyWith(
+                                  fontSize: 11,
+                                  color: JoynColors.secondaryText,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 0.3)),
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text('#$_invoiceNo',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style:
+                                    JoynTypography.bodyMedium.copyWith(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w800,
+                                        color: JoynColors.primary)),
+                              ),
+                              const SizedBox(width: 4),
+                              const Icon(Icons.keyboard_arrow_down,
+                                  size: 18,
+                                  color: JoynColors.secondaryText),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Container(
+              width: 1,
+              height: 44,
+              color: JoynColors.border.withValues(alpha: 0.6)),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(left: 12),
+              child: _PressScale(
+                onTap: _pickDate,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: _P.infoSoft,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(Icons.calendar_today_rounded,
+                            size: 17, color: JoynColors.primary),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Date',
+                                style: JoynTypography.caption.copyWith(
+                                    fontSize: 11,
+                                    color: JoynColors.secondaryText,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: 0.3)),
+                            const SizedBox(height: 2),
+                            Row(
+                              children: [
+                                Flexible(
+                                  child: Text(_formattedDate,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: JoynTypography.bodyMedium
+                                          .copyWith(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w800,
+                                          color: JoynColors.primary)),
+                                ),
+                                const SizedBox(width: 4),
+                                const Icon(Icons.keyboard_arrow_down,
+                                    size: 18,
+                                    color: JoynColors.secondaryText),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ==================== Customer Card ====================
+  Widget _buildCustomerCard() {
+    return _SectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: _P.infoSoft,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(Icons.person_outline_rounded,
+                    size: 14, color: JoynColors.primary),
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text('Customer Details',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: JoynTypography.bodyLarge.copyWith(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.2,
+                        color: JoynColors.primary)),
+              ),
+              const Spacer(),
+              GestureDetector(
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  setState(() {
+                    _isOneTimeCustomer = !_isOneTimeCustomer;
+                    if (_isOneTimeCustomer) {
+                      _customerController.clear();
+                      _phoneController.clear();
+                    }
+                  });
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOutCubic,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: _isOneTimeCustomer
+                        ? _P.warningColor.withValues(alpha: 0.12)
+                        : JoynColors.chipBackground,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: _isOneTimeCustomer
+                          ? _P.warningColor.withValues(alpha: 0.4)
+                          : JoynColors.border.withValues(alpha: 0.8),
+                      width: 1.2,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        _isOneTimeCustomer
+                            ? Icons.flash_on_rounded
+                            : Icons.flash_off_rounded,
+                        size: 13,
+                        color: _isOneTimeCustomer
+                            ? _P.warningColor
+                            : JoynColors.secondaryText,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'One-time',
+                        style: JoynTypography.caption.copyWith(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: _isOneTimeCustomer
+                              ? _P.warningColor
+                              : JoynColors.secondaryText,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Padding(
+            padding: const EdgeInsets.only(left: 4),
+            child: Text(
+              _isOneTimeCustomer
+                  ? 'Just type the name — no need to save'
+                  : 'Tap customer field to pick from saved parties',
+              style: JoynTypography.caption.copyWith(
+                fontSize: 11,
+                color: JoynColors.secondaryText.withValues(alpha: 0.75),
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          _isOneTimeCustomer
+              ? _premiumField(
+            label: 'Customer Name *',
+            controller: _customerController,
+            icon: Icons.person_outline_rounded,
+            hint: 'Enter customer name',
+            textCapitalization: TextCapitalization.words,
+            onChanged: (_) => setState(() {}),
+          )
+              : _premiumField(
+            label: 'Customer *',
+            controller: _customerController,
+            icon: Icons.person_outline_rounded,
+            onTap: _openCustomerPicker,
+            enabled: false,
+            hint: 'Tap to select customer',
+          ),
+          const SizedBox(height: 14),
+          _premiumField(
+            label: 'Phone Number',
+            controller: _phoneController,
+            icon: Icons.call_outlined,
+            keyboardType: TextInputType.phone,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _premiumField({
+    required String label,
+    required TextEditingController controller,
+    required IconData icon,
+    TextInputType? keyboardType,
+    VoidCallback? onTap,
+    bool enabled = true,
+    String? hint,
+    TextCapitalization textCapitalization = TextCapitalization.none,
+    ValueChanged<String>? onChanged,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Container(
-              width: 30,
-              height: 30,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                gradient: _Premium.gradient(Colors.black87),
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.22),
-                    blurRadius: 8,
-                    offset: const Offset(0, 3),
-                  ),
-                ],
-              ),
-              child: Text(
-                '$number',
-                style: JoynTypography.caption.copyWith(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Icon(icon, size: 17, color: JoynColors.primary),
-            const SizedBox(width: 6),
-            Text(
-              title,
-              style: JoynTypography.bodyLarge.copyWith(
-                fontWeight: FontWeight.w800,
-                fontSize: 17,
-                letterSpacing: -0.2,
-                color: JoynColors.primary,
-              ),
-            ),
-          ],
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 8),
+          child: Text(label,
+              style: JoynTypography.caption.copyWith(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: JoynColors.secondaryText,
+                  letterSpacing: 0.2)),
         ),
-        const SizedBox(height: 8),
-        Container(
-          height: 1.2,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [JoynColors.border, JoynColors.border.withValues(alpha: 0.0)],
+        _PressScale(
+          onTap: onTap,
+          child: Container(
+            decoration: BoxDecoration(
+              color: JoynColors.chipBackground,
+              borderRadius: BorderRadius.circular(_P.rMd),
+              border: Border.all(
+                  color: JoynColors.border.withValues(alpha: 0.8),
+                  width: 1.2),
+            ),
+            child: TextField(
+              controller: controller,
+              enabled: enabled,
+              keyboardType: keyboardType,
+              textCapitalization: textCapitalization,
+              onChanged: onChanged,
+              style: JoynTypography.bodyMedium.copyWith(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: JoynColors.primary),
+              decoration: InputDecoration(
+                hintText: hint ?? '',
+                hintStyle: JoynTypography.bodyMedium.copyWith(
+                    fontSize: 14,
+                    color: JoynColors.secondaryText.withValues(alpha: 0.6),
+                    fontWeight: FontWeight.w500),
+                prefixIcon: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: _P.infoSoft,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(icon, size: 14, color: JoynColors.primary),
+                  ),
+                ),
+                border: InputBorder.none,
+                contentPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+              ),
             ),
           ),
         ),
@@ -826,544 +1861,1358 @@ class _AddSaleOrderScreenState extends State<AddSaleOrderScreen> {
     );
   }
 
-  Widget _buildSaleDetailsCard() {
+  // ==================== Quick Add Strip ====================
+  Widget _buildQuickAddStrip() {
+    if (_savedItems.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  gradient: _P.primaryGrad,
+                  borderRadius: BorderRadius.circular(6),
+                  boxShadow: _P.glow(JoynColors.primary, 0.25),
+                ),
+                child: const Icon(Icons.bolt_rounded,
+                    size: 11, color: Colors.white),
+              ),
+              const SizedBox(width: 6),
+              Text('Quick Add',
+                  style: JoynTypography.caption.copyWith(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: JoynColors.primary,
+                      letterSpacing: 0.2)),
+              const Spacer(),
+              Text('${_savedItems.length} saved',
+                  style: JoynTypography.caption.copyWith(
+                      fontSize: 10.5,
+                      color: JoynColors.secondaryText,
+                      fontWeight: FontWeight.w600)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 88,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              itemCount: _savedItems.length,
+              itemBuilder: (context, i) {
+                final item = _savedItems[i];
+                final price = item.sellingPrice != 0
+                    ? item.sellingPrice
+                    : item.purchasePrice;
+                final isLowStock = item.stock <= 0;
+
+                return _PressScale(
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    final newItem = OrderItemModel(
+                      id: DateTime.now().millisecondsSinceEpoch.toString(),
+                      itemName: item.name,
+                      category: item.category,
+                      unitPrice: price,
+                      qty: 1,
+                      unit: item.unit,
+                    );
+                    setState(() {
+                      _items.add(newItem);
+                      _recalcTotal();
+                    });
+                  },
+                  child: Container(
+                    width: 150,
+                    margin: const EdgeInsets.only(right: 10),
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                          color: JoynColors.border.withValues(alpha: 0.7),
+                          width: 1.2),
+                      boxShadow: _P.soft,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                item.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: JoynTypography.bodyMedium.copyWith(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: JoynColors.primary),
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.all(3),
+                              decoration: BoxDecoration(
+                                gradient: _P.primaryGrad,
+                                shape: BoxShape.circle,
+                                boxShadow:
+                                _P.glow(JoynColors.primary, 0.3),
+                              ),
+                              child: const Icon(Icons.add,
+                                  size: 10, color: Colors.white),
+                            ),
+                          ],
+                        ),
+                        if (item.category.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Text(item.category,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: JoynTypography.caption.copyWith(
+                                  fontSize: 10,
+                                  color: JoynColors.secondaryText)),
+                        ],
+                        const Spacer(),
+                        Row(
+                          children: [
+                            Text('₹${price.toStringAsFixed(0)}',
+                                style: JoynTypography.bodyMedium.copyWith(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w800,
+                                    color: JoynColors.success)),
+                            const Spacer(),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 5, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: isLowStock
+                                    ? _P.errorSoft
+                                    : _P.infoSoft,
+                                borderRadius: BorderRadius.circular(5),
+                              ),
+                              child: Text('${item.stock}',
+                                  style: JoynTypography.caption.copyWith(
+                                      fontSize: 9.5,
+                                      fontWeight: FontWeight.w800,
+                                      color: isLowStock
+                                          ? JoynColors.error
+                                          : JoynColors.primary)),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ==================== Items Section ====================
+  Widget _buildItemsSection() {
+    return _SectionCard(
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              gradient: _P.itemHeaderGrad,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(_P.rLg),
+                topRight: Radius.circular(_P.rLg),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 22,
+                  height: 22,
+                  decoration: BoxDecoration(
+                    gradient: _P.primaryGrad,
+                    shape: BoxShape.circle,
+                    boxShadow: _P.glow(JoynColors.primary, 0.35),
+                  ),
+                  child: const Icon(Icons.check_rounded,
+                      size: 13, color: Colors.white),
+                ),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text('Billed Items',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: JoynTypography.bodyMedium.copyWith(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: JoynColors.primary,
+                          letterSpacing: 0.1)),
+                ),
+                if (_items.isNotEmpty) ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.9),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                          color: JoynColors.primary.withValues(alpha: 0.15)),
+                    ),
+                    child: Text('$_totalQty',
+                        style: JoynTypography.caption.copyWith(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: JoynColors.primary)),
+                  ),
+                ],
+                const Spacer(),
+                GestureDetector(
+                  onTap: () => setState(() => _rateExclTax = !_rateExclTax),
+                  child: Container(
+                    padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.8),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                          color: JoynColors.primary.withValues(alpha: 0.15)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(_rateExclTax ? 'Excl.' : 'Incl.',
+                            style: JoynTypography.caption.copyWith(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: JoynColors.primary)),
+                        const Icon(Icons.keyboard_arrow_down,
+                            size: 13, color: JoynColors.primary),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (_items.isEmpty)
+            _buildEmptyItemsState()
+          else
+            Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                children: [
+                  ..._items.asMap().entries.map((e) => _SwipeToDelete(
+                    onDelete: () => _removeItem(e.value.id),
+                    child: _buildPremiumItemCard(e.value, e.key),
+                  )),
+                  const SizedBox(height: 6),
+                  _buildItemsSummaryRow(),
+                ],
+              ),
+            ),
+
+          // ✅ Quick Add Strip
+          _buildQuickAddStrip(),
+
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 16),
+            child: _PressScale(
+              onTap: () => _addItem(),
+              child: Container(
+                height: 52,
+                decoration: BoxDecoration(
+                  color: _P.infoSoft,
+                  borderRadius: BorderRadius.circular(_P.rMd),
+                  border: Border.all(
+                      color: JoynColors.primary.withValues(alpha: 0.2),
+                      width: 1.5),
+                ),
+                child: Center(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          gradient: _P.primaryGrad,
+                          shape: BoxShape.circle,
+                          boxShadow: _P.glow(JoynColors.primary, 0.35),
+                        ),
+                        child: const Icon(Icons.add,
+                            color: Colors.white, size: 16),
+                      ),
+                      const SizedBox(width: 10),
+                      Text('Add Items',
+                          style: JoynTypography.bodyMedium.copyWith(
+                              fontSize: 15,
+                              color: JoynColors.primary,
+                              fontWeight: FontWeight.w700)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyItemsState() {
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(22),
+            decoration: BoxDecoration(
+              color: JoynColors.chipBackground,
+              shape: BoxShape.circle,
+              border: Border.all(
+                  color: JoynColors.border.withValues(alpha: 0.5),
+                  width: 1.5),
+            ),
+            child: Icon(Icons.inventory_2_outlined,
+                size: 34, color: JoynColors.secondaryText),
+          ),
+          const SizedBox(height: 14),
+          Text('No items added yet',
+              style: JoynTypography.bodyMedium.copyWith(
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w700,
+                  color: JoynColors.secondaryText)),
+          const SizedBox(height: 4),
+          Text('Tap below to add your first item',
+              style: JoynTypography.caption
+                  .copyWith(fontSize: 12, color: JoynColors.secondaryText)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPremiumItemCard(OrderItemModel item, int index) {
+    final discountPercent = item.subtotal > 0
+        ? ((item.discountAmount / item.subtotal) * 100).toStringAsFixed(0)
+        : '0';
+
+    return _PressScale(
+      onTap: () => _addItem(existing: item),
+      onLongPress: () => _removeItem(item.id),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: JoynColors.chipBackground,
+          borderRadius: BorderRadius.circular(_P.rMd),
+          border: Border.all(color: JoynColors.border.withValues(alpha: 0.5)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    gradient: _P.primaryGrad,
+                    borderRadius: BorderRadius.circular(6),
+                    boxShadow: _P.glow(JoynColors.primary, 0.25),
+                  ),
+                  child: Text('#${index + 1}',
+                      style: JoynTypography.caption.copyWith(
+                          fontSize: 11,
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800)),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(item.itemName,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: JoynTypography.bodyLarge.copyWith(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.2,
+                          color: JoynColors.primary)),
+                ),
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _P.successSoft,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                        color: JoynColors.success.withValues(alpha: 0.2)),
+                  ),
+                  child: Text('₹${item.total.toStringAsFixed(0)}',
+                      style: JoynTypography.bodyMedium.copyWith(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: JoynColors.success)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _itemDetailRow(
+              'Item Subtotal',
+              '${item.qty} ${item.unit.isNotEmpty ? '${item.unit} ' : ''}x ${item.unitPrice.toStringAsFixed(0)}',
+              JoynColors.secondaryText,
+              valueColor: JoynColors.primary,
+            ),
+            const SizedBox(height: 6),
+            _itemDetailRow(
+              'Discount ($discountPercent%)',
+              '₹ ${item.discountAmount.toStringAsFixed(0)}',
+              _P.warningColor,
+              valueColor: _P.warningColor,
+            ),
+            const SizedBox(height: 6),
+            _itemDetailRow(
+              'Tax',
+              '${item.taxRate.toStringAsFixed(0)}%  •  ₹${item.taxAmount.toStringAsFixed(0)}',
+              JoynColors.secondaryText,
+              valueColor: JoynColors.primary,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _itemDetailRow(String label, String value, Color labelColor,
+      {Color? valueColor}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Flexible(
+          flex: 3,
+          child: Text(label,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: JoynTypography.caption.copyWith(
+                  fontSize: 12.5,
+                  color: labelColor,
+                  fontWeight: FontWeight.w600)),
+        ),
+        const SizedBox(width: 8),
+        Flexible(
+          flex: 2,
+          child: Text(value,
+              textAlign: TextAlign.right,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: JoynTypography.caption.copyWith(
+                  fontSize: 12.5,
+                  color: valueColor ?? JoynColors.primary,
+                  fontWeight: FontWeight.w700)),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildItemsSummaryRow() {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        gradient: _Premium.surfaceGradient,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: JoynColors.border, width: 1.2),
-        boxShadow: _Premium.cardShadow,
+        gradient: LinearGradient(
+          colors: [
+            JoynColors.primary.withValues(alpha: 0.06),
+            JoynColors.primary.withValues(alpha: 0.02),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(_P.rMd),
+        border: Border.all(color: JoynColors.primary.withValues(alpha: 0.12)),
       ),
       child: Column(
         children: [
           Row(
             children: [
               Expanded(
-                child: InkWell(
-                  onTap: _editInvoiceNo,
-                  borderRadius: BorderRadius.circular(16),
-                  child: Container(
-                    height: 56,
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: JoynColors.border, width: 1.2),
-                      boxShadow: _Premium.fieldShadow,
+                child: _summaryChip('Disc', _totalDiscount.toStringAsFixed(2),
+                    _P.warningColor),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _summaryChip(
+                    'Tax', _totalTax.toStringAsFixed(2), JoynColors.primary),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _summaryChip(
+                    'Qty', _totalQty.toString(), JoynColors.secondaryText),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _summaryChip('Subtotal', _subtotal.toStringAsFixed(2),
+                    JoynColors.success),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _summaryChip(String label, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Flexible(
+            child: Text(label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: JoynTypography.caption.copyWith(
+                    fontSize: 11,
+                    color: JoynColors.secondaryText,
+                    fontWeight: FontWeight.w600)),
+          ),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.right,
+                style: JoynTypography.caption.copyWith(
+                    fontSize: 13, color: color, fontWeight: FontWeight.w800)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ==================== Payment Summary ====================
+  Widget _buildPaymentSummaryCard() {
+    return _SectionCard(
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: _P.infoSoft,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(Icons.receipt_long_outlined,
+                    size: 14, color: JoynColors.primary),
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text('Payment Summary',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: JoynTypography.bodyLarge.copyWith(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.2,
+                        color: JoynColors.primary)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          _buildTotalAmountSection(),
+          const SizedBox(height: 16),
+          Container(
+              height: 1, color: JoynColors.border.withValues(alpha: 0.4)),
+          const SizedBox(height: 16),
+          _buildReceivedSection(),
+          const SizedBox(height: 20),
+          _buildBalanceDueSection(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTotalAmountSection() {
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Total Amount',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: JoynTypography.bodyMedium.copyWith(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: JoynColors.secondaryText)),
+              const SizedBox(height: 2),
+              Text('(Auto from items)',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: JoynTypography.caption.copyWith(
+                      fontSize: 10.5,
+                      color: JoynColors.secondaryText.withValues(alpha: 0.7))),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                gradient: _P.primaryGrad,
+                borderRadius: BorderRadius.circular(8),
+                boxShadow: _P.glow(JoynColors.primary, 0.25),
+              ),
+              child: const Icon(Icons.currency_rupee,
+                  size: 14, color: Colors.white),
+            ),
+            const SizedBox(width: 8),
+            SizedBox(
+              width: 120,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  TextField(
+                    controller: _totalAmountController,
+                    readOnly: true,
+                    enabled: false,
+                    textAlign: TextAlign.right,
+                    keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                    style: JoynTypography.bodyLarge.copyWith(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: JoynColors.primary),
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      contentPadding: EdgeInsets.only(bottom: 4),
+                      border: InputBorder.none,
+                      hintText: '0.00',
                     ),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(6),
+                  ),
+                  SizedBox(
+                      height: 1.5,
+                      child: CustomPaint(
+                          painter: DashedLinePainter(),
+                          size: const Size(double.infinity, 1.5))),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildReceivedSection() {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        SizedBox(
+          width: 24,
+          height: 24,
+          child: Checkbox(
+            value: _isReceivedChecked,
+            onChanged: (v) {
+              setState(() {
+                _isReceivedChecked = v ?? false;
+                if (_isReceivedChecked) {
+                  _receivedController.text =
+                      _currentTotalAmount.toStringAsFixed(2);
+                  _receivedAmount = _currentTotalAmount;
+                } else {
+                  _receivedController.text = '0.00';
+                  _receivedAmount = 0.0;
+                }
+              });
+            },
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            visualDensity: VisualDensity.compact,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(6)),
+            side: BorderSide(color: JoynColors.primary, width: 2),
+            activeColor: JoynColors.primary,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Flexible(
+          child: Text('Received',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: JoynTypography.bodyMedium.copyWith(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: JoynColors.primary)),
+        ),
+        const Spacer(),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: JoynColors.chipBackground,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: JoynColors.border.withValues(alpha: 0.7)),
+          ),
+          child: Row(
+            children: [
+              Text('₹',
+                  style: JoynTypography.bodyMedium.copyWith(
+                      fontSize: 14,
+                      color: JoynColors.secondaryText,
+                      fontWeight: FontWeight.w700)),
+              const SizedBox(width: 6),
+              SizedBox(
+                width: 80,
+                child: TextField(
+                  controller: _receivedController,
+                  textAlign: TextAlign.right,
+                  keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+                  style: JoynTypography.bodyMedium.copyWith(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: JoynColors.primary),
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
+                    border: InputBorder.none,
+                    hintText: '0',
+                  ),
+                  onChanged: (val) => setState(
+                          () => _receivedAmount = double.tryParse(val) ?? 0.0),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBalanceDueSection() {
+    final isDue = _currentBalanceDue > 0;
+    final color = isDue ? JoynColors.error : JoynColors.success;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            color.withValues(alpha: 0.10),
+            color.withValues(alpha: 0.05),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(_P.rMd),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(10),
+              boxShadow: _P.glow(color, 0.35),
+            ),
+            child: Icon(isDue ? Icons.trending_up : Icons.check_circle,
+                color: Colors.white, size: 16),
+          ),
+          const SizedBox(width: 12),
+          Flexible(
+            child: Text('Balance Due',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: JoynTypography.bodyMedium.copyWith(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: color,
+                    letterSpacing: 0.1)),
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerRight,
+              child: _AnimatedAmount(
+                value: _currentBalanceDue,
+                style: JoynTypography.bodyLarge.copyWith(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: color),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ==================== More Details ====================
+  Widget _buildMoreDetailsCard() {
+    return _SectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: _P.infoSoft,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(Icons.tune_rounded,
+                    size: 14, color: JoynColors.primary),
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text('More Details',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: JoynTypography.bodyLarge.copyWith(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.2,
+                        color: JoynColors.primary)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          _moreDetailRow(
+            icon: Icons.payment_rounded,
+            iconColor: JoynColors.success,
+            label: 'Payment Type',
+            value: _paymentType,
+            onTap: _openPaymentTypePicker,
+          ),
+          const SizedBox(height: 12),
+          _moreDetailRow(
+            icon: Icons.location_on_outlined,
+            iconColor: _P.warningColor,
+            label: 'State of Supply',
+            value: _stateOfSupply,
+            onTap: _openStateOfSupplyPicker,
+          ),
+          const SizedBox(height: 20),
+          Divider(height: 1, color: JoynColors.border.withValues(alpha: 0.4)),
+          const SizedBox(height: 20),
+          Text('Description / Note',
+              style: JoynTypography.caption.copyWith(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: JoynColors.secondaryText,
+                  letterSpacing: 0.2)),
+          const SizedBox(height: 8),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                flex: 3,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: JoynColors.chipBackground,
+                    borderRadius: BorderRadius.circular(_P.rMd),
+                    border: Border.all(
+                        color: JoynColors.border.withValues(alpha: 0.8),
+                        width: 1.2),
+                  ),
+                  child: TextField(
+                    controller: _noteController,
+                    maxLines: 4,
+                    style: JoynTypography.bodyMedium.copyWith(
+                        fontSize: 14, fontWeight: FontWeight.w500),
+                    decoration: InputDecoration(
+                      hintText: 'Add Note',
+                      hintStyle: JoynTypography.bodyMedium.copyWith(
+                          fontSize: 14,
+                          color:
+                          JoynColors.secondaryText.withValues(alpha: 0.6)),
+                      contentPadding: const EdgeInsets.all(14),
+                      border: InputBorder.none,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              _PressScale(
+                onTap: _pickImage,
+                child: Container(
+                  width: 100,
+                  height: 100,
+                  decoration: BoxDecoration(
+                    color: JoynColors.chipBackground,
+                    border: Border.all(
+                        color: JoynColors.border.withValues(alpha: 0.8),
+                        width: 1.2),
+                    borderRadius: BorderRadius.circular(_P.rMd),
+                  ),
+                  child: _pickedImage != null
+                      ? Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.file(_pickedImage!,
+                            fit: BoxFit.cover),
+                      ),
+                      Positioned(
+                        top: 6,
+                        right: 6,
+                        child: GestureDetector(
+                          onTap: () =>
+                              setState(() => _pickedImage = null),
+                          child: Container(
+                            padding: const EdgeInsets.all(3),
+                            decoration: const BoxDecoration(
+                                color: Colors.black54,
+                                shape: BoxShape.circle),
+                            child: const Icon(Icons.close,
+                                size: 12, color: Colors.white),
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+                      : Stack(
+                    children: [
+                      Center(
+                        child: Icon(Icons.image_outlined,
+                            size: 36,
+                            color: JoynColors.secondaryText
+                                .withValues(alpha: 0.6)),
+                      ),
+                      Positioned(
+                        top: 6,
+                        right: 6,
+                        child: Container(
+                          width: 24,
+                          height: 24,
                           decoration: BoxDecoration(
-                            color: JoynColors.primary.withValues(alpha: 0.08),
-                            borderRadius: BorderRadius.circular(10),
+                            gradient: _P.primaryGrad,
+                            shape: BoxShape.circle,
+                            boxShadow:
+                            _P.glow(JoynColors.primary, 0.35),
                           ),
-                          child: const Icon(Icons.tag_rounded, size: 16, color: JoynColors.primary),
+                          child: const Icon(Icons.add,
+                              size: 14, color: Colors.white),
                         ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text('Invoice No.', style: JoynTypography.caption.copyWith(fontSize: 10.5, color: JoynColors.secondaryText, fontWeight: FontWeight.w700)),
-                              Text('$_invoiceNo', style: JoynTypography.bodyLarge.copyWith(fontSize: 12, fontWeight: FontWeight.w700, color: JoynColors.primary)),
-                            ],
-                          ),
-                        ),
-                        const Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: JoynColors.primary),
-                      ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _PressScale(
+            onTap: _pickDocument,
+            child: Container(
+              height: 60,
+              decoration: BoxDecoration(
+                color: JoynColors.chipBackground,
+                borderRadius: BorderRadius.circular(_P.rMd),
+                border: Border.all(
+                    color: JoynColors.border.withValues(alpha: 0.8),
+                    width: 1.2),
+              ),
+              child: Center(
+                child: _pickedDocument != null
+                    ? Row(
+                  children: [
+                    const SizedBox(width: 14),
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        gradient: _P.primaryGrad,
+                        borderRadius: BorderRadius.circular(8),
+                        boxShadow: _P.glow(JoynColors.primary, 0.25),
+                      ),
+                      child: const Icon(Icons.description,
+                          color: Colors.white, size: 14),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        _pickedDocument!.path.split('/').last,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: JoynTypography.bodyMedium.copyWith(
+                            fontSize: 13,
+                            color: JoynColors.primary,
+                            fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 18),
+                      onPressed: () =>
+                          setState(() => _pickedDocument = null),
+                    ),
+                  ],
+                )
+                    : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.description_outlined,
+                        size: 20,
+                        color: JoynColors.secondaryText
+                            .withValues(alpha: 0.7)),
+                    const SizedBox(width: 10),
+                    Text('Add Document',
+                        style: JoynTypography.bodyMedium.copyWith(
+                            fontSize: 14,
+                            color: JoynColors.secondaryText,
+                            fontWeight: FontWeight.w600)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.only(left: 4),
+            child: Row(
+              children: [
+                Icon(Icons.info_outline,
+                    size: 11,
+                    color: JoynColors.secondaryText.withValues(alpha: 0.7)),
+                const SizedBox(width: 4),
+                Text('Internet is required to upload',
+                    style: JoynTypography.caption.copyWith(
+                        fontSize: 11, color: JoynColors.secondaryText)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          _buildTermsAndConditionsSection(),
+        ],
+      ),
+    );
+  }
+
+  Widget _moreDetailRow({
+    required IconData icon,
+    required Color iconColor,
+    required String label,
+    required String value,
+    required VoidCallback onTap,
+  }) {
+    return _PressScale(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: JoynColors.chipBackground,
+          borderRadius: BorderRadius.circular(_P.rMd),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: iconColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, size: 16, color: iconColor),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: JoynTypography.bodyMedium.copyWith(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
+                      color: JoynColors.primary)),
+            ),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(value,
+                  textAlign: TextAlign.right,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: JoynTypography.bodyMedium.copyWith(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
+                      color: JoynColors.secondaryText)),
+            ),
+            const SizedBox(width: 6),
+            Icon(Icons.chevron_right,
+                size: 18, color: JoynColors.secondaryText),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTermsAndConditionsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        InkWell(
+          onTap: () => setState(() => _termsExpanded = !_termsExpanded),
+          borderRadius: BorderRadius.circular(10),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              children: [
+                Icon(Icons.gavel_rounded,
+                    size: 16, color: JoynColors.secondaryText),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text('Terms & Conditions',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: JoynTypography.bodyMedium.copyWith(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: JoynColors.primary,
+                          letterSpacing: -0.1)),
+                ),
+                const Spacer(),
+                AnimatedRotation(
+                  turns: _termsExpanded ? 0.5 : 0,
+                  duration: const Duration(milliseconds: 200),
+                  child: Icon(Icons.keyboard_arrow_down,
+                      color: JoynColors.secondaryText),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (_termsExpanded) ...[
+          const SizedBox(height: 12),
+          _PressScale(
+            onTap: _openTermsPicker,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+              decoration: BoxDecoration(
+                color: JoynColors.chipBackground,
+                borderRadius: BorderRadius.circular(_P.rMd),
+                border: Border.all(
+                    color: JoynColors.border.withValues(alpha: 0.8),
+                    width: 1.2),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(_selectedTerms ?? 'Select Terms & Conditions',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: JoynTypography.bodyMedium.copyWith(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w600,
+                            color: _selectedTerms == null
+                                ? JoynColors.secondaryText
+                                : JoynColors.primary)),
+                  ),
+                  Icon(Icons.chevron_right,
+                      size: 18, color: JoynColors.secondaryText),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _PressScale(
+                  onTap: () =>
+                      setState(() => _selectedTerms = 'Standard T&C'),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color: _P.infoSoft,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Center(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text('Saved T&C',
+                            maxLines: 1,
+                            style: JoynTypography.caption.copyWith(
+                                color: JoynColors.primary,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13)),
+                      ),
                     ),
                   ),
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: InkWell(
-                  onTap: _pickDate,
-                  borderRadius: BorderRadius.circular(16),
+                child: _PressScale(
+                  onTap: () => setState(() => _selectedTerms = 'Custom T&C'),
                   child: Container(
-                    height: 54,
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
                     decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: JoynColors.border, width: 1.2),
-                      boxShadow: _Premium.fieldShadow,
+                      color: _P.infoSoft,
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: JoynColors.primary.withValues(alpha: 0.08),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: const Icon(Icons.calendar_today_outlined, size: 15, color: JoynColors.primary),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text('Date', style: JoynTypography.caption.copyWith(fontSize: 10.5, color: JoynColors.secondaryText, fontWeight: FontWeight.w700)),
-                              Text(_formattedDate, style: JoynTypography.bodyLarge.copyWith(fontSize: 10.5, fontWeight: FontWeight.w700, color: JoynColors.primary)),
-                            ],
-                          ),
-                        ),
-                      ],
+                    child: Center(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text('Add Custom',
+                            maxLines: 1,
+                            style: JoynTypography.caption.copyWith(
+                                color: JoynColors.primary,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13)),
+                      ),
                     ),
                   ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 14),
-          _buildOneTimeCustomerToggle(),
-          AnimatedSize(
-            duration: const Duration(milliseconds: 220),
-            curve: Curves.easeOut,
-            alignment: Alignment.topCenter,
-            child: _isOneTimeCustomer
-                ? const SizedBox(width: double.infinity)
-                : Padding(
-              padding: const EdgeInsets.only(top: 14),
-              child: _buildCustomerPickerField(),
-            ),
-          ),
-          const SizedBox(height: 14),
-          AnimatedSize(
-            duration: const Duration(milliseconds: 220),
-            curve: Curves.easeOut,
-            alignment: Alignment.topCenter,
-            child: _isOneTimeCustomer
-                ? const SizedBox(width: double.infinity)
-                : Padding(
-              padding: const EdgeInsets.only(top: 14),
-              child: _buildFormField(
-                label: 'Phone Number',
-                hintText: 'Enter phone number',
-                controller: _phoneController,
-                keyboardType: TextInputType.phone,
-                icon: Icons.call_outlined,
-              ),
-            ),
-          ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildCustomerPickerField() {
-    final hasValue = _customerController.text.trim().isNotEmpty;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Customer *', style: JoynTypography.bodyMedium.copyWith(fontSize: 13, fontWeight: FontWeight.w700, color: JoynColors.secondaryText)),
-        const SizedBox(height: 6),
-        InkWell(
-          onTap: _openCustomerPicker,
-          borderRadius: BorderRadius.circular(16),
-          child: Container(
-            height: 54,
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: JoynColors.border, width: 1.2),
-              boxShadow: _Premium.fieldShadow,
-            ),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: JoynColors.primary.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(Icons.person_outline_rounded, size: 16, color: JoynColors.primary),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    hasValue ? _customerController.text : 'Search or select customer',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: JoynTypography.bodyLarge.copyWith(
-                      fontSize: 15,
-                      fontWeight: hasValue ? FontWeight.w600 : FontWeight.w500,
-                      color: hasValue ? JoynColors.primary : JoynColors.secondaryText.withValues(alpha: 0.6),
-                    ),
-                  ),
-                ),
-                const Icon(Icons.search_rounded, size: 18, color: JoynColors.primary),
-              ],
-            ),
-          ),
-        ),
       ],
     );
   }
 
-  Widget _buildOneTimeCustomerToggle() {
+  // ==================== Bottom Bar ====================
+  Widget _buildBottomBar() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: _isOneTimeCustomer ? JoynColors.primary.withValues(alpha: 0.35) : JoynColors.border,
-          width: 1.2,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 28,
+            offset: const Offset(0, -8),
+          ),
+        ],
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(24),
+          topRight: Radius.circular(24),
         ),
-        boxShadow: _Premium.fieldShadow,
       ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              gradient: _isOneTimeCustomer ? _Premium.gradient(JoynColors.primary) : null,
-              color: _isOneTimeCustomer ? null : JoynColors.primary.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(
-              Icons.person_off_outlined,
-              size: 16,
-              color: _isOneTimeCustomer ? Colors.white : JoynColors.primary,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('One Time Customer', style: JoynTypography.bodyMedium.copyWith(fontSize: 13.5, fontWeight: FontWeight.w700, color: JoynColors.primary)),
-                const SizedBox(height: 2),
-                Text(
-                  _isOneTimeCustomer ? 'Sale will be recorded without a customer name' : 'Turn on to skip entering customer details',
-                  style: JoynTypography.caption.copyWith(fontSize: 11.5, color: JoynColors.secondaryText),
-                ),
-              ],
-            ),
-          ),
-          Switch.adaptive(
-            value: _isOneTimeCustomer,
-            onChanged: _toggleOneTimeCustomer,
-            activeTrackColor: JoynColors.primary,
-            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ==================== UPDATED ITEMS CARD ====================
-  Widget _buildItemsCard() {
-    final subtotalTotal = _items.fold(0.0, (sum, item) => sum + item.subtotal);
-    final discountTotal = _items.fold(0.0, (sum, item) => sum + item.discountAmount);
-    final taxTotal = _items.fold(0.0, (sum, item) => sum + item.taxAmount);
-    final totalQty = _items.fold(0, (sum, item) => sum + item.qty);
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        gradient: _Premium.surfaceGradient,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: JoynColors.border, width: 1.2),
-        boxShadow: _Premium.cardShadow,
-      ),
-      child: _items.isEmpty
-          ? InkWell(
-        onTap: () => _addItem(),
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          height: 52,
-          decoration: BoxDecoration(
-            color: JoynColors.chipBackground,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: JoynColors.border, width: 1.2),
-          ),
-          child: Center(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.add_circle_rounded, color: JoynColors.primary, size: 20),
-                const SizedBox(width: 8),
-                Text('Add Items ', style: JoynTypography.bodyLarge.copyWith(fontSize: 15.5, fontWeight: FontWeight.w700, color: JoynColors.primary)),
-                Text('(Optional)', style: JoynTypography.bodyLarge.copyWith(fontSize: 15.5, color: JoynColors.secondaryText)),
-              ],
-            ),
-          ),
-        ),
-      )
-          : Column(
-        children: [
-          ..._items.map((item) => _buildItemRow(item)),
-          const SizedBox(height: 10),
-          Divider(color: JoynColors.border, thickness: 1.2),
-          const SizedBox(height: 10),
-          // Summary rows (matching the image)
-          _buildSummaryRow('Total Disc.', discountTotal, isDiscount: true),
-          _buildSummaryRow('Total Qty.', totalQty.toDouble(), isQty: true),
-          _buildSummaryRow('Total Tax Amt.', taxTotal, isTax: true),
-          _buildSummaryRow('Subtotal', subtotalTotal, isSubtotal: true),
-          const SizedBox(height: 8),
-          InkWell(
-            onTap: () => _addItem(),
-            borderRadius: BorderRadius.circular(12),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.add_circle_outline_rounded, size: 18, color: JoynColors.primary),
-                  const SizedBox(width: 6),
-                  Text('Add Another Item', style: JoynTypography.bodyMedium.copyWith(fontSize: 13.5, fontWeight: FontWeight.w700, color: JoynColors.primary)),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSummaryRow(String label, double value, {bool isDiscount = false, bool isTax = false, bool isSubtotal = false, bool isQty = false}) {
-    Color color = JoynColors.secondaryText;
-    String prefix = '';
-    if (isDiscount) {
-      color = JoynColors.error;
-      prefix = '- ';
-    } else if (isTax) {
-      color = JoynColors.primary;
-      prefix = '+ ';
-    } else if (isSubtotal) {
-      color = JoynColors.primary;
-    }
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: JoynTypography.bodyMedium.copyWith(
-            fontSize: 13,
-            fontWeight: isSubtotal ? FontWeight.w700 : FontWeight.w500,
-            color: isSubtotal ? JoynColors.primary : JoynColors.secondaryText,
-          )),
-          Text(
-            isQty ? value.toInt().toString() : '$prefix₹${value.toStringAsFixed(2)}',
-            style: JoynTypography.bodyMedium.copyWith(
-              fontSize: 13,
-              fontWeight: isSubtotal ? FontWeight.w700 : FontWeight.w600,
-              color: color,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildItemRow(OrderItemModel item) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: JoynColors.border, width: 1.2),
-        boxShadow: _Premium.fieldShadow,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header: Item name + Total + Edit/Delete
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
+      child: SafeArea(
+        top: false,
+        child: Row(
+          children: [
+            if (!_isEditing) ...[
               Expanded(
-                child: Text(
-                  '#${_items.indexOf(item) + 1} ${item.itemName}',
-                  style: JoynTypography.bodyMedium.copyWith(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 15,
+                flex: 3,
+                child: SizedBox(
+                  height: 52,
+                  child: OutlinedButton(
+                    onPressed: () => _save(andNew: true),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      foregroundColor: JoynColors.primary,
+                      side: BorderSide(
+                          color: JoynColors.border.withValues(alpha: 0.8),
+                          width: 1.5),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(_P.rMd)),
+                      backgroundColor: Colors.white,
+                    ),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text('Save & New',
+                          maxLines: 1,
+                          style: JoynTypography.caption.copyWith(
+                              fontSize: 13.5,
+                              color: JoynColors.primary,
+                              fontWeight: FontWeight.w700)),
+                    ),
                   ),
-                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-              Text(
-                '₹${item.total.toStringAsFixed(2)}',
-                style: JoynTypography.bodyLarge.copyWith(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 16,
-                  color: JoynColors.primary,
+              const SizedBox(width: 10),
+            ],
+            Expanded(
+              flex: _isEditing ? 1 : 4,
+              child: _PressScale(
+                onTap: () => _save(),
+                child: Container(
+                  height: 52,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(_P.rMd),
+                    boxShadow: _P.glow(JoynColors.primary, 0.4),
+                  ),
+                  child: ElevatedButton(
+                    onPressed: () => _save(),
+                    style: ElevatedButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(_P.rMd)),
+                      elevation: 0,
+                      backgroundColor: Colors.transparent,
+                    ),
+                    child: Ink(
+                      decoration: BoxDecoration(
+                        gradient: _P.primaryGrad,
+                        borderRadius: BorderRadius.circular(_P.rMd),
+                      ),
+                      child: Container(
+                        alignment: Alignment.center,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.check_rounded,
+                                color: Colors.white, size: 18),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                    _isEditing ? 'Update' : 'Save',
+                                    maxLines: 1,
+                                    style:
+                                    JoynTypography.buttonText.copyWith(
+                                        fontSize: 15,
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w800,
+                                        letterSpacing: 0.2)),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ),
+            ),
+            if (!_isEditing) ...[
               const SizedBox(width: 8),
-              InkWell(
-                onTap: () => _addItem(existing: item),
-                child: const Icon(Icons.edit_outlined, size: 18, color: JoynColors.secondaryText),
-              ),
-              const SizedBox(width: 4),
-              InkWell(
-                onTap: () => _removeItem(item.id),
-                child: const Icon(Icons.delete_outline_rounded, size: 18, color: JoynColors.error),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          // Subtotal line: "Item Subtotal" and "2 Box x 500 = ₹1,000"
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Item Subtotal',
-                style: JoynTypography.caption.copyWith(
-                  fontSize: 11.5,
-                  color: JoynColors.secondaryText,
-                ),
-              ),
-              Text(
-                '${item.qty} ${item.unit.isNotEmpty ? item.unit : ''} x ₹${item.unitPrice.toStringAsFixed(2)} = ₹${item.subtotal.toStringAsFixed(2)}',
-                style: JoynTypography.caption.copyWith(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w600,
-                  color: JoynColors.primary,
+              SizedBox(
+                width: 52,
+                height: 52,
+                child: IconButton(
+                  style: IconButton.styleFrom(
+                    backgroundColor: _P.infoSoft,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(_P.rMd)),
+                  ),
+                  icon: Icon(Icons.more_vert,
+                      color: JoynColors.primary, size: 20),
+                  onPressed: _showMoreOptions,
                 ),
               ),
             ],
-          ),
-          // Discount line (if any)
-          if (item.discountAmount > 0)
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Discount (${(item.discountAmount / item.subtotal * 100).toStringAsFixed(0)}%)',
-                  style: JoynTypography.caption.copyWith(
-                    fontSize: 11.5,
-                    color: JoynColors.secondaryText,
-                  ),
-                ),
-                Text(
-                  '₹${item.discountAmount.toStringAsFixed(2)}',
-                  style: JoynTypography.caption.copyWith(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w600,
-                    color: JoynColors.error,
-                  ),
-                ),
-              ],
-            ),
-          // Tax line (if any)
-          if (item.taxAmount > 0)
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Tax GST@${item.taxRate}%',
-                  style: JoynTypography.caption.copyWith(
-                    fontSize: 11.5,
-                    color: JoynColors.secondaryText,
-                  ),
-                ),
-                Text(
-                  '₹${item.taxAmount.toStringAsFixed(2)}',
-                  style: JoynTypography.caption.copyWith(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w600,
-                    color: JoynColors.primary,
-                  ),
-                ),
-              ],
-            ),
-          const Divider(height: 14, color: JoynColors.border),
-          // Total line
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Total',
-                style: JoynTypography.bodyMedium.copyWith(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                  color: JoynColors.primary,
-                ),
-              ),
-              Text(
-                '₹${item.total.toStringAsFixed(2)}',
-                style: JoynTypography.bodyMedium.copyWith(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 14,
-                  color: JoynColors.primary,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFormField({
-    required String label,
-    required String hintText,
-    required TextEditingController controller,
-    TextInputType keyboardType = TextInputType.text,
-    IconData? icon,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: JoynTypography.bodyMedium.copyWith(fontSize: 13, fontWeight: FontWeight.w700, color: JoynColors.secondaryText)),
-        const SizedBox(height: 6),
-        Container(
-          height: 54,
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: JoynColors.border, width: 1.2),
-            boxShadow: _Premium.fieldShadow,
-          ),
-          child: Row(
-            children: [
-              if (icon != null) ...[
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: JoynColors.primary.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(icon, size: 16, color: JoynColors.primary),
-                ),
-                const SizedBox(width: 10),
-              ],
-              Expanded(
-                child: TextField(
-                  controller: controller,
-                  keyboardType: keyboardType,
-                  style: JoynTypography.bodyLarge.copyWith(fontSize: 15, fontWeight: FontWeight.w600),
-                  decoration: InputDecoration(
-                    hintText: hintText,
-                    hintStyle: JoynTypography.bodyLarge.copyWith(
-                      color: JoynColors.secondaryText.withValues(alpha: 0.5),
-                      fontSize: 14.5,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    border: InputBorder.none,
-                    isDense: true,
-                  ),
-                ),
-              ),
-            ],
-          ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }

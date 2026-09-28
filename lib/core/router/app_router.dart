@@ -26,10 +26,12 @@ import 'package:joyn/features/orders/presentation/purchase_order_detail_screen.d
 import 'package:joyn/features/orders/models/sales_models.dart';
 import 'package:joyn/features/Inventory/presentation/party_list_screen.dart';
 import 'package:joyn/features/Inventory/presentation/items_list_screen.dart';
+import 'route_observer.dart'; // ✅ ADDED
 
 final GoRouter appRouter = GoRouter(
   initialLocation: '/',
   debugLogDiagnostics: true,
+  observers: [routeObserver], // ✅ ADDED — auto-refresh ke liye
   routes: [
     // --- Splash & Onboarding ---
     GoRoute(
@@ -91,19 +93,26 @@ final GoRouter appRouter = GoRouter(
     // --- Orders ---
     GoRoute(
       path: '/add-sale-order',
-      pageBuilder: (context, state) => CustomTransitionPage(
-        key: state.pageKey,
-        child: const AddSaleOrderScreen(),
-        transitionsBuilder: _slideTransition,
-      ),
+      pageBuilder: (context, state) {
+        // ✅ existingOrder extra se le sakte hain (edit mode)
+        final existing = state.extra as SaleOrderModel?;
+        return CustomTransitionPage(
+          key: state.pageKey,
+          child: AddSaleOrderScreen(existingOrder: existing),
+          transitionsBuilder: _slideTransition,
+        );
+      },
     ),
     GoRoute(
       path: '/add-purchase-order',
-      pageBuilder: (context, state) => CustomTransitionPage(
-        key: state.pageKey,
-        child: const AddPurchaseOrderScreen(),
-        transitionsBuilder: _slideTransition,
-      ),
+      pageBuilder: (context, state) {
+        final existing = state.extra as PurchaseOrderModel?;
+        return CustomTransitionPage(
+          key: state.pageKey,
+          child: AddPurchaseOrderScreen(existingOrder: existing),
+          transitionsBuilder: _slideTransition,
+        );
+      },
     ),
     GoRoute(
       path: '/sale-orders-list',

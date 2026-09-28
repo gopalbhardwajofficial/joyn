@@ -108,7 +108,8 @@ class PartyModel {
       priorityLevel: map['priorityLevel'] as String? ?? 'medium',
       photoPath: map['photoPath'] as String? ?? '',
       avatarIndex: (map['avatarIndex'] as num?)?.toInt(),
-      createdAt: DateTime.tryParse(map['createdAt'] as String? ?? '') ?? DateTime.now(),
+      createdAt:
+      DateTime.tryParse(map['createdAt'] as String? ?? '') ?? DateTime.now(),
       openingBalance: (map['openingBalance'] as num?)?.toDouble() ?? 0,
       balanceType: map['balanceType'] as String? ?? 'toReceive',
       creditLimit: (map['creditLimit'] as num?)?.toDouble(),
@@ -116,7 +117,8 @@ class PartyModel {
   }
 
   Map<String, dynamic> toJson() => toDb();
-  factory PartyModel.fromJson(Map<String, dynamic> json) => PartyModel.fromDb(json);
+  factory PartyModel.fromJson(Map<String, dynamic> json) =>
+      PartyModel.fromDb(json);
 }
 
 // ==================== InventoryItemModel ====================
@@ -250,22 +252,30 @@ class InventoryItemModel {
       photoPath: map['photoPath'] as String? ?? '',
       purchasePrice: (map['purchasePrice'] as num?)?.toDouble() ?? 0,
       sellingPrice: (map['sellingPrice'] as num?)?.toDouble() ?? 0,
-      salePriceTaxMode: map['salePriceTaxMode'] == 'withTax' ? PriceTaxMode.withTax : PriceTaxMode.withoutTax,
+      salePriceTaxMode: map['salePriceTaxMode'] == 'withTax'
+          ? PriceTaxMode.withTax
+          : PriceTaxMode.withoutTax,
       discountOnSalePrice: (map['discountOnSalePrice'] as num?)?.toDouble() ?? 0,
-      discountType: map['discountType'] == 'value' ? DiscountType.value : DiscountType.percentage,
-      purchasePriceTaxMode: map['purchasePriceTaxMode'] == 'withTax' ? PriceTaxMode.withTax : PriceTaxMode.withoutTax,
+      discountType: map['discountType'] == 'value'
+          ? DiscountType.value
+          : DiscountType.percentage,
+      purchasePriceTaxMode: map['purchasePriceTaxMode'] == 'withTax'
+          ? PriceTaxMode.withTax
+          : PriceTaxMode.withoutTax,
       taxRateLabel: map['taxRateLabel'] as String? ?? 'None',
       taxRatePercent: (map['taxRatePercent'] as num?)?.toDouble() ?? 0,
       stock: (map['stock'] as num?)?.toInt() ?? 0,
-      createdAt: DateTime.tryParse(map['createdAt'] as String? ?? '') ?? DateTime.now(),
+      createdAt:
+      DateTime.tryParse(map['createdAt'] as String? ?? '') ?? DateTime.now(),
     );
   }
 
   Map<String, dynamic> toJson() => toDb();
-  factory InventoryItemModel.fromJson(Map<String, dynamic> json) => InventoryItemModel.fromDb(json);
+  factory InventoryItemModel.fromJson(Map<String, dynamic> json) =>
+      InventoryItemModel.fromDb(json);
 }
 
-// ==================== OrderItemModel – FIXED ====================
+// ==================== OrderItemModel ====================
 class OrderItemModel {
   final String id;
   final String itemName;
@@ -321,7 +331,6 @@ class OrderItemModel {
     );
   }
 
-  // ✅ JSON methods matching the stored format in SaleOrderModel / PurchaseOrderModel
   Map<String, dynamic> toJson() => {
     'name': itemName,
     'category': category,
@@ -336,7 +345,8 @@ class OrderItemModel {
 
   factory OrderItemModel.fromJson(Map<String, dynamic> json) {
     return OrderItemModel(
-      id: json['id'] as String? ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      id: json['id'] as String? ??
+          DateTime.now().millisecondsSinceEpoch.toString(),
       itemName: (json['name'] ?? '').toString(),
       category: (json['category'] ?? '').toString(),
       unitPrice: (json['unitPrice'] as num?)?.toDouble() ?? 0,
@@ -390,7 +400,8 @@ class SaleOrderModel {
     required this.createdAt,
   });
 
-  double get balanceDue => (totalAmount - receivedAmount).clamp(0, double.infinity);
+  double get balanceDue =>
+      (totalAmount - receivedAmount).clamp(0, double.infinity);
 
   SaleOrderModel copyWith({
     int? invoiceNo,
@@ -458,14 +469,16 @@ class SaleOrderModel {
       partyId: map['partyId'] as String? ?? '',
       customerName: map['customerName'] as String? ?? '',
       customerPhone: map['customerPhone'] as String? ?? '',
-      items: (jsonDecode(map['items'] as String? ?? '[]') as List).cast<Map<String, dynamic>>(),
+      items: (jsonDecode(map['items'] as String? ?? '[]') as List)
+          .cast<Map<String, dynamic>>(),
       totalAmount: (map['totalAmount'] as num?)?.toDouble() ?? 0,
       receivedAmount: (map['receivedAmount'] as num?)?.toDouble() ?? 0,
       paymentType: map['paymentType'] as String? ?? 'Cash',
       stateOfSupply: map['stateOfSupply'] as String? ?? '',
       description: map['description'] as String? ?? '',
       termsAndConditions: map['termsAndConditions'] as String? ?? '',
-      createdAt: DateTime.tryParse(map['createdAt'] as String? ?? '') ?? DateTime.now(),
+      createdAt:
+      DateTime.tryParse(map['createdAt'] as String? ?? '') ?? DateTime.now(),
     );
   }
 }
@@ -522,7 +535,8 @@ class PaymentModel {
       receivedAmount: (map['receivedAmount'] as num?)?.toDouble() ?? 0,
       paymentType: map['paymentType'] as String? ?? 'Cash',
       isPaymentOut: (map['isPaymentOut'] ?? 0) == 1,
-      createdAt: DateTime.tryParse(map['createdAt'] as String? ?? '') ?? DateTime.now(),
+      createdAt:
+      DateTime.tryParse(map['createdAt'] as String? ?? '') ?? DateTime.now(),
     );
   }
 }
@@ -569,9 +583,11 @@ class PurchaseOrderModel {
       date: map['date'] as String? ?? '',
       dueDate: map['dueDate'] as String? ?? '',
       partyName: map['partyName'] as String? ?? '',
-      items: (jsonDecode(map['items'] as String? ?? '[]') as List).cast<Map<String, dynamic>>(),
+      items: (jsonDecode(map['items'] as String? ?? '[]') as List)
+          .cast<Map<String, dynamic>>(),
       totalAmount: (map['totalAmount'] as num?)?.toDouble() ?? 0,
-      createdAt: DateTime.tryParse(map['createdAt'] as String? ?? '') ?? DateTime.now(),
+      createdAt:
+      DateTime.tryParse(map['createdAt'] as String? ?? '') ?? DateTime.now(),
     );
   }
 }

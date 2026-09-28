@@ -12,6 +12,7 @@ import '../../../core/widgets/custom_crop_dialog.dart';
 import '../../orders/models/sales_models.dart';
 import '../../orders/data/sales_repository.dart';
 import 'package:joyn/features/Inventory/widgets/avatar.dart';
+
 enum PartySaveMode { mainParty, oneTimeCustomer }
 enum PartyType { customer, supplier, both }
 enum BalanceType { toReceive, toPay }
@@ -71,24 +72,35 @@ const List<String> _kIndianStates = [
   'West Bengal',
 ];
 
+/// ---------------------------------------------------------------------
+/// THEME ENHANCEMENT LAYER
+/// ---------------------------------------------------------------------
 class _Premium {
   static List<BoxShadow> cardShadow = [
-    BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 20, offset: const Offset(0, 8)),
-    BoxShadow(color: Colors.black.withValues(alpha: 0.025), blurRadius: 4, offset: const Offset(0, 1)),
+    BoxShadow(color: Colors.black.withValues(alpha: 0.045), blurRadius: 24, offset: const Offset(0, 10)),
+    BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 3, offset: const Offset(0, 1)),
   ];
 
   static List<BoxShadow> fieldShadow = [
-    BoxShadow(color: Colors.black.withValues(alpha: 0.035), blurRadius: 10, offset: const Offset(0, 3)),
+    BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 8, offset: const Offset(0, 2)),
+  ];
+
+  static List<BoxShadow> fieldShadowFocused(Color color) => [
+    BoxShadow(color: color.withValues(alpha: 0.12), blurRadius: 14, offset: const Offset(0, 4)),
   ];
 
   static List<BoxShadow> chipShadow(Color color) => [
-    BoxShadow(color: color.withValues(alpha: 0.28), blurRadius: 14, offset: const Offset(0, 6)),
+    BoxShadow(color: color.withValues(alpha: 0.25), blurRadius: 16, offset: const Offset(0, 7)),
+  ];
+
+  static List<BoxShadow> softGlow(Color color) => [
+    BoxShadow(color: color.withValues(alpha: 0.16), blurRadius: 22, offset: const Offset(0, 8)),
   ];
 
   static LinearGradient gradient(Color color) => LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [color, Color.lerp(color, Colors.black, 0.18) ?? color],
+    colors: [color, Color.lerp(color, Colors.black, 0.2) ?? color],
   );
 
   static LinearGradient surfaceGradient = LinearGradient(
@@ -96,6 +108,9 @@ class _Premium {
     end: Alignment.bottomRight,
     colors: [Colors.white, JoynColors.background],
   );
+
+  static Border hairline({double width = 1.1, double alpha = 1}) =>
+      Border.all(color: JoynColors.border.withValues(alpha: alpha), width: width);
 }
 
 const String kSavedPartiesPrefsKey = 'joyn_saved_parties';
@@ -108,11 +123,6 @@ class AddNewPartyScreen extends StatefulWidget {
   });
 
   final PartySaveMode initialSaveMode;
-
-  /// Pass an existing party (from PartyDetailScreen's Edit button) to
-  /// pre-fill the form instead of starting blank. Accepts a PartyModel
-  /// or a Map<String, dynamic> — either way we read its `id` so Save
-  /// updates the same row instead of creating a duplicate.
   final dynamic existingParty;
 
   @override
@@ -152,9 +162,6 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
   bool get _isOneTimeCustomer => _saveMode == PartySaveMode.oneTimeCustomer;
   bool get _isEditMode => widget.existingParty != null;
 
-  /// The id of the row we're editing — null when adding a brand new party.
-  /// Reading this once up front means Save always knows whether to
-  /// insert or update, no matter what shape existingParty came in as.
   String? get _existingPartyId {
     final party = widget.existingParty;
     if (party == null) return null;
@@ -177,7 +184,6 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
     final party = widget.existingParty;
     if (party == null) return;
     try {
-      // Works whether existingParty is a PartyModel or a Map<String, dynamic>.
       final name = (party is Map) ? party['name'] : party.name;
       final category = (party is Map) ? party['category'] : party.category;
       final contact = (party is Map) ? party['contactNumber'] : party.contactNumber;
@@ -193,8 +199,6 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
       if (email != null) _emailController.text = email.toString();
       if (address != null) _billingAddressController.text = address.toString();
 
-      // Only PartyModel carries these — a Map (from the older
-      // SharedPreferences flow) may not have them, which is fine.
       if (party is PartyModel) {
         if (party.openingBalance != 0) {
           _openingBalanceController.text = party.openingBalance.toString();
@@ -204,11 +208,6 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
           _creditLimitController.text = party.creditLimit!.toStringAsFixed(0);
         }
 
-        // ============================================================
-        // THE FIX: restore party type, priority, and the saved
-        // icon/photo so that opening Edit doesn't silently reset
-        // them back to the defaults (customer / medium / no avatar).
-        // ============================================================
         _partyType = PartyType.values.firstWhere(
               (t) => t.name == party.partyType,
           orElse: () => PartyType.customer,
@@ -225,10 +224,7 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
           _photoFile = null;
         }
       }
-    } catch (_) {
-      // If existingParty doesn't expose these fields the way we expect,
-      // just leave the form blank rather than crashing.
-    }
+    } catch (_) {}
   }
 
   @override
@@ -254,10 +250,18 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
         backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text('New Category', style: JoynTypography.titleMedium.copyWith(fontSize: 18, fontWeight: FontWeight.w800)),
-        content: TextField(controller: controller, decoration: const InputDecoration(hintText: 'Enter category name')),
+        content: TextField(
+          controller: controller,
+          decoration: InputDecoration(
+            hintText: 'Enter category name',
+            filled: true,
+            fillColor: JoynColors.chipBackground,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+          ),
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(context, controller.text.trim()), child: const Text('Add')),
+          TextButton(onPressed: () => Navigator.pop(context), child: Text('Cancel', style: TextStyle(color: JoynColors.secondaryText, fontWeight: FontWeight.w600))),
+          TextButton(onPressed: () => Navigator.pop(context, controller.text.trim()), child: Text('Add', style: TextStyle(color: JoynColors.primary, fontWeight: FontWeight.w800))),
         ],
       ),
     );
@@ -279,8 +283,8 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
         title: const Text('Delete Category?'),
         content: Text('Remove "$category" from your category list?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: Text('Cancel', style: TextStyle(color: JoynColors.secondaryText, fontWeight: FontWeight.w600))),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: Text('Delete', style: TextStyle(color: JoynColors.error, fontWeight: FontWeight.w800))),
         ],
       ),
     );
@@ -294,11 +298,26 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
   }
 
   void _addPartyThroughContacts() {
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Contacts picker not wired up yet')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Contacts picker not wired up yet'),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
   }
 
   Future<void> _pickAsOfDate() async {
-    final picked = await showDatePicker(context: context, initialDate: _asOfDate, firstDate: DateTime(2000), lastDate: DateTime(2035));
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _asOfDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2035),
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(colorScheme: ColorScheme.light(primary: JoynColors.primary)),
+        child: child!,
+      ),
+    );
     if (picked != null) setState(() => _asOfDate = picked);
   }
 
@@ -310,10 +329,19 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
         backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text('Set Credit Limit', style: JoynTypography.titleMedium.copyWith(fontSize: 17, fontWeight: FontWeight.w800)),
-        content: TextField(controller: controller, keyboardType: TextInputType.number, decoration: const InputDecoration(hintText: 'Enter credit limit amount')),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(
+            hintText: 'Enter credit limit amount',
+            filled: true,
+            fillColor: JoynColors.chipBackground,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+          ),
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(context, controller.text.trim()), child: const Text('Save')),
+          TextButton(onPressed: () => Navigator.pop(context), child: Text('Cancel', style: TextStyle(color: JoynColors.secondaryText, fontWeight: FontWeight.w600))),
+          TextButton(onPressed: () => Navigator.pop(context, controller.text.trim()), child: Text('Save', style: TextStyle(color: JoynColors.primary, fontWeight: FontWeight.w800))),
         ],
       ),
     );
@@ -341,7 +369,13 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
         });
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not open camera: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Could not open camera: $e'),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ));
+      }
     }
   }
 
@@ -357,7 +391,13 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
         });
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not open gallery: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Could not open gallery: $e'),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ));
+      }
     }
   }
 
@@ -372,7 +412,14 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(width: 40, height: 4.5, margin: const EdgeInsets.only(top: 14, bottom: 10), decoration: BoxDecoration(color: JoynColors.border, borderRadius: BorderRadius.circular(3))),
+              Container(width: 40, height: 4.5, margin: const EdgeInsets.only(top: 14, bottom: 14), decoration: BoxDecoration(color: JoynColors.border, borderRadius: BorderRadius.circular(3))),
+              Padding(
+                padding: const EdgeInsets.only(left: 20, bottom: 6),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Add Photo', style: JoynTypography.titleMedium.copyWith(fontSize: 16, fontWeight: FontWeight.w800)),
+                ),
+              ),
               _buildPhotoSourceTile(Icons.photo_camera_rounded, 'Camera', () {
                 Navigator.pop(context);
                 _pickImageFromCamera();
@@ -401,13 +448,15 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
         child: Row(
           children: [
             Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(color: JoynColors.primary.withValues(alpha: 0.06), borderRadius: BorderRadius.circular(12)),
-              child: Icon(icon, size: 18, color: JoynColors.primary),
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(color: JoynColors.primary.withValues(alpha: 0.07), borderRadius: BorderRadius.circular(13)),
+              child: Icon(icon, size: 19, color: JoynColors.primary),
             ),
             const SizedBox(width: 14),
             Text(label, style: JoynTypography.bodyLarge.copyWith(fontSize: 15, fontWeight: FontWeight.w600)),
+            const Spacer(),
+            Icon(Icons.chevron_right_rounded, size: 18, color: JoynColors.secondaryText.withValues(alpha: 0.5)),
           ],
         ),
       ),
@@ -416,6 +465,7 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
 
   Widget _buildPhotoPicker() {
     final avatar = _selectedAvatarIndex != null ? kPartyAvatarOptions[_selectedAvatarIndex!] : null;
+    final hasContent = avatar != null || _photoFile != null;
 
     return GestureDetector(
       onTap: _pickPhoto,
@@ -423,49 +473,54 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
         clipBehavior: Clip.none,
         children: [
           Container(
-            width: 92,
-            height: 92,
-            padding: const EdgeInsets.all(3),
+            width: 100,
+            height: 100,
+            padding: const EdgeInsets.all(3.5),
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              gradient: (avatar != null || _photoFile != null)
-                  ? null
+              gradient: hasContent
+                  ? LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [JoynColors.primary, JoynColors.primary.withValues(alpha: 0.35)],
+              )
                   : LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  JoynColors.primary.withValues(alpha: 0.18),
-                  JoynColors.primary.withValues(alpha: 0.06),
+                  JoynColors.primary.withValues(alpha: 0.16),
+                  JoynColors.primary.withValues(alpha: 0.05),
                 ],
               ),
-              boxShadow: [
-                BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 14, offset: const Offset(0, 5)),
-              ],
+              boxShadow: hasContent
+                  ? _Premium.softGlow(JoynColors.primary)
+                  : [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 14, offset: const Offset(0, 5))],
             ),
             child: Container(
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: avatar == null && _photoFile == null ? Colors.white : null,
+                color: !hasContent ? Colors.white : null,
                 gradient: avatar != null
                     ? LinearGradient(colors: avatar.gradient, begin: Alignment.topLeft, end: Alignment.bottomRight)
                     : null,
                 image: _photoFile != null ? DecorationImage(image: FileImage(_photoFile!), fit: BoxFit.cover) : null,
+                border: Border.all(color: Colors.white, width: 3),
               ),
               alignment: Alignment.center,
               child: (_photoFile == null && avatar == null)
-                  ? const Icon(Icons.add_a_photo_outlined, color: JoynColors.secondaryText, size: 28)
-                  : (_photoFile == null ? Text(avatar!.emoji, style: const TextStyle(fontSize: 34)) : null),
+                  ? Icon(Icons.add_a_photo_outlined, color: JoynColors.primary.withValues(alpha: 0.55), size: 28)
+                  : (_photoFile == null ? Text(avatar!.emoji, style: const TextStyle(fontSize: 38)) : null),
             ),
           ),
           Positioned(
-            bottom: 0,
-            right: 0,
+            bottom: -1,
+            right: -1,
             child: Container(
-              padding: const EdgeInsets.all(6),
+              padding: const EdgeInsets.all(7),
               decoration: BoxDecoration(
                 gradient: _Premium.gradient(JoynColors.primary),
                 shape: BoxShape.circle,
-                border: Border.all(color: JoynColors.background, width: 2.5),
+                border: Border.all(color: Colors.white, width: 2.5),
                 boxShadow: _Premium.chipShadow(JoynColors.primary),
               ),
               child: const Icon(Icons.camera_alt_rounded, color: Colors.white, size: 14),
@@ -499,6 +554,7 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
                   final selected = _selectedAvatarIndex == index;
                   return GestureDetector(
                     onTap: () {
+                      HapticFeedback.selectionClick();
                       setState(() {
                         _selectedAvatarIndex = index;
                         _photoFile = null;
@@ -508,17 +564,18 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
                     child: Stack(
                       clipBehavior: Clip.none,
                       children: [
-                        Container(
-                          width: 60,
-                          height: 60,
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 160),
+                          width: 62,
+                          height: 62,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             gradient: LinearGradient(colors: option.gradient, begin: Alignment.topLeft, end: Alignment.bottomRight),
-                            border: selected ? Border.all(color: JoynColors.primary, width: 2.5) : null,
-                            boxShadow: [BoxShadow(color: option.gradient.last.withValues(alpha: 0.35), blurRadius: 10, offset: const Offset(0, 4))],
+                            border: selected ? Border.all(color: JoynColors.primary, width: 2.5) : Border.all(color: Colors.transparent, width: 2.5),
+                            boxShadow: [BoxShadow(color: option.gradient.last.withValues(alpha: 0.32), blurRadius: 12, offset: const Offset(0, 5))],
                           ),
                           alignment: Alignment.center,
-                          child: Text(option.emoji, style: const TextStyle(fontSize: 26)),
+                          child: Text(option.emoji, style: const TextStyle(fontSize: 28)),
                         ),
                         if (selected)
                           Positioned(
@@ -568,11 +625,18 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
                     return ListTile(
                       contentPadding: EdgeInsets.zero,
                       onTap: () {
+                        HapticFeedback.selectionClick();
                         setState(() => _selectedGstType = type);
                         Navigator.pop(context);
                       },
                       title: Text(type, style: JoynTypography.bodyLarge.copyWith(fontSize: 14.5, fontWeight: selected ? FontWeight.w700 : FontWeight.w500, color: selected ? JoynColors.primary : Colors.black87)),
-                      trailing: selected ? const Icon(Icons.check_rounded, color: JoynColors.primary) : null,
+                      trailing: selected
+                          ? Container(
+                        padding: const EdgeInsets.all(3),
+                        decoration: BoxDecoration(color: JoynColors.primary, shape: BoxShape.circle),
+                        child: const Icon(Icons.check_rounded, color: Colors.white, size: 12),
+                      )
+                          : null,
                     );
                   },
                 ),
@@ -607,9 +671,14 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text('State', style: JoynTypography.titleMedium.copyWith(fontSize: 17, fontWeight: FontWeight.w800)),
-                        IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(context)),
+                        IconButton(
+                          icon: const Icon(Icons.close_rounded),
+                          style: IconButton.styleFrom(backgroundColor: JoynColors.chipBackground, shape: const CircleBorder()),
+                          onPressed: () => Navigator.pop(context),
+                        ),
                       ],
                     ),
+                    const SizedBox(height: 4),
                     TextField(
                       autofocus: false,
                       onChanged: (v) => setModalState(() => query = v),
@@ -634,11 +703,18 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
                           return ListTile(
                             contentPadding: EdgeInsets.zero,
                             onTap: () {
+                              HapticFeedback.selectionClick();
                               setState(() => _selectedState = state);
                               Navigator.pop(context);
                             },
                             title: Text(state, style: JoynTypography.bodyLarge.copyWith(fontSize: 14.5, fontWeight: selected ? FontWeight.w700 : FontWeight.w500, color: selected ? JoynColors.primary : Colors.black87)),
-                            trailing: selected ? const Icon(Icons.check_rounded, color: JoynColors.primary) : null,
+                            trailing: selected
+                                ? Container(
+                              padding: const EdgeInsets.all(3),
+                              decoration: BoxDecoration(color: JoynColors.primary, shape: BoxShape.circle),
+                              child: const Icon(Icons.check_rounded, color: Colors.white, size: 12),
+                            )
+                                : null,
                           );
                         },
                       ),
@@ -653,7 +729,7 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
     );
   }
 
-  // ---- Party Type / Priority dropdowns --------------------------
+  // ---- Party Type / Priority --------------------------
 
   String _partyTypeLabel(PartyType type) {
     switch (type) {
@@ -692,23 +768,31 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Party Type', style: JoynTypography.bodyMedium.copyWith(fontSize: 13, fontWeight: FontWeight.w700, color: JoynColors.secondaryText)),
+        Text('Party Type',
+            style: JoynTypography.bodyMedium.copyWith(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: JoynColors.secondaryText,
+                letterSpacing: 0.1)),
         const SizedBox(height: 6),
         Container(
           height: 54,
-          padding: const EdgeInsets.symmetric(horizontal: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: JoynColors.border, width: 1.2),
+            border: _Premium.hairline(),
             boxShadow: _Premium.fieldShadow,
           ),
           child: Row(
             children: [
               Container(
                 padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(color: JoynColors.primary.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10)),
-                child: const Icon(Icons.groups_outlined, size: 16, color: JoynColors.primary),
+                decoration: BoxDecoration(
+                    color: JoynColors.primary.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(9)),
+                child: const Icon(Icons.groups_outlined,
+                    size: 15, color: JoynColors.primary),
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -716,16 +800,46 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
                   child: DropdownButton<PartyType>(
                     value: _partyType,
                     isExpanded: true,
-                    icon: const Icon(Icons.keyboard_arrow_down_rounded, color: JoynColors.primary, size: 20),
-                    style: JoynTypography.bodyLarge.copyWith(fontSize: 15, color: JoynColors.primary),
-                    borderRadius: BorderRadius.circular(16),
+                    isDense: true,
+                    icon: const Icon(Icons.keyboard_arrow_down_rounded,
+                        color: JoynColors.primary, size: 20),
+                    style: JoynTypography.bodyLarge.copyWith(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.black87),
+                    borderRadius: BorderRadius.circular(14),
+                    // ← Prevents dropdown menu items from wrapping
+                    itemHeight: null,
+                    selectedItemBuilder: (context) => PartyType.values
+                        .map((type) => Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        _partyTypeLabel(type),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        softWrap: false,
+                        style: JoynTypography.bodyLarge.copyWith(
+                            fontSize: 14.5,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black87),
+                      ),
+                    ))
+                        .toList(),
                     onChanged: (val) {
                       if (val == null) return;
                       HapticFeedback.selectionClick();
                       setState(() => _partyType = val);
                     },
                     items: PartyType.values
-                        .map((type) => DropdownMenuItem(value: type, child: Text(_partyTypeLabel(type))))
+                        .map((type) => DropdownMenuItem(
+                      value: type,
+                      child: Text(
+                        _partyTypeLabel(type),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        softWrap: false,
+                      ),
+                    ))
                         .toList(),
                   ),
                 ),
@@ -741,23 +855,31 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Priority Level', style: JoynTypography.bodyMedium.copyWith(fontSize: 13, fontWeight: FontWeight.w700, color: JoynColors.secondaryText)),
+        Text('Priority Level',
+            style: JoynTypography.bodyMedium.copyWith(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: JoynColors.secondaryText,
+                letterSpacing: 0.1)),
         const SizedBox(height: 6),
         Container(
           height: 54,
-          padding: const EdgeInsets.symmetric(horizontal: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: JoynColors.border, width: 1.2),
+            border: _Premium.hairline(),
             boxShadow: _Premium.fieldShadow,
           ),
           child: Row(
             children: [
               Container(
                 padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(color: _priorityColor(_priorityLevel).withValues(alpha: 0.10), borderRadius: BorderRadius.circular(10)),
-                child: Icon(Icons.flag_rounded, size: 16, color: _priorityColor(_priorityLevel)),
+                decoration: BoxDecoration(
+                    color: _priorityColor(_priorityLevel).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(9)),
+                child: Icon(Icons.flag_rounded,
+                    size: 15, color: _priorityColor(_priorityLevel)),
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -765,16 +887,45 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
                   child: DropdownButton<PriorityLevel>(
                     value: _priorityLevel,
                     isExpanded: true,
-                    icon: const Icon(Icons.keyboard_arrow_down_rounded, color: JoynColors.primary, size: 20),
-                    style: JoynTypography.bodyLarge.copyWith(fontSize: 15, color: JoynColors.primary),
-                    borderRadius: BorderRadius.circular(16),
+                    isDense: true,
+                    icon: const Icon(Icons.keyboard_arrow_down_rounded,
+                        color: JoynColors.primary, size: 20),
+                    style: JoynTypography.bodyLarge.copyWith(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.black87),
+                    borderRadius: BorderRadius.circular(14),
+                    itemHeight: null,
+                    selectedItemBuilder: (context) => PriorityLevel.values
+                        .map((level) => Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        _priorityLabel(level),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        softWrap: false,
+                        style: JoynTypography.bodyLarge.copyWith(
+                            fontSize: 14.5,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black87),
+                      ),
+                    ))
+                        .toList(),
                     onChanged: (val) {
                       if (val == null) return;
                       HapticFeedback.selectionClick();
                       setState(() => _priorityLevel = val);
                     },
                     items: PriorityLevel.values
-                        .map((level) => DropdownMenuItem(value: level, child: Text(_priorityLabel(level))))
+                        .map((level) => DropdownMenuItem(
+                      value: level,
+                      child: Text(
+                        _priorityLabel(level),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        softWrap: false,
+                      ),
+                    ))
                         .toList(),
                   ),
                 ),
@@ -847,16 +998,6 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
       final openingBalanceValue = double.tryParse(_openingBalanceController.text.trim()) ?? 0;
 
       if (_isEditMode) {
-        // ============================================================
-        // THE FIX: previously this branch called insertParty() again,
-        // which created a DUPLICATE row. Now it calls updateParty()
-        // with the ORIGINAL party's id, so editing a party updates
-        // that same row in the local sqlite database.
-        //
-        // ALSO FIXED: partyType / priorityLevel / photoPath /
-        // avatarIndex were missing here entirely, so the selected
-        // icon (and type/priority) never made it into the saved row.
-        // ============================================================
         final existing = widget.existingParty;
         final createdAt = (existing is PartyModel) ? existing.createdAt : DateTime.now();
 
@@ -879,7 +1020,6 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
 
         await _salesRepository.updateParty(party);
       } else {
-        // Brand new party — safe to insert.
         final party = PartyModel(
           id: DateTime.now().millisecondsSinceEpoch.toString(),
           name: _partyNameController.text.trim(),
@@ -937,10 +1077,6 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
       return;
     }
 
-    // Always returns the saved data — both the back arrow AND the save
-    // button pop with the same partyData payload, so whoever pushed
-    // this screen (PartyListScreen or PartyDetailScreen's edit flow)
-    // always gets the latest values back.
     context.pop(partyData);
   }
 
@@ -953,17 +1089,36 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
       appBar: AppBar(
         backgroundColor: JoynColors.background,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          // Back behaves like Save — it pops with the current form
-          // state so no edits are silently lost when someone taps the
-          // arrow instead of the Save button.
-          onPressed: () => _saveToDatabase(),
+        scrolledUnderElevation: 0,
+        leading: Padding(
+          padding: const EdgeInsets.only(left: 8),
+          child: IconButton(
+            icon: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: const Icon(Icons.arrow_back_rounded, color: Colors.black87, size: 18),
+            ),
+            onPressed: () => context.pop(), // ← FIXED: just go back
+          ),
         ),
-        centerTitle: true,
+        centerTitle: false,
         title: Text(
           _isEditMode ? 'Edit Party' : 'Add New Party',
-          style: JoynTypography.titleMedium.copyWith(fontSize: 18, fontWeight: FontWeight.w800),
+          style: JoynTypography.titleMedium.copyWith(
+            fontSize: 19,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.3,
+          ),
         ),
       ),
       body: SafeArea(
@@ -971,33 +1126,33 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
           children: [
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+                padding: const EdgeInsets.fromLTRB(18, 10, 18, 16),
                 children: [
                   _buildSectionHeader(1, 'Party Details', Icons.badge_outlined),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 14),
                   _buildPartyDetailsCard(),
-                  const SizedBox(height: 30),
+                  const SizedBox(height: 26),
 
                   if (!_isOneTimeCustomer) ...[
                     _buildSectionHeader(2, 'Balance Details', Icons.account_balance_wallet_outlined),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 14),
                     _buildBalanceDetailsCard(),
-                    const SizedBox(height: 30),
+                    const SizedBox(height: 26),
                   ],
 
                   if (!_isOneTimeCustomer) ...[
                     _buildSectionHeader(3, 'Category', Icons.sell_outlined),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 14),
                     _buildCategoryCard(),
-                    const SizedBox(height: 30),
+                    const SizedBox(height: 26),
                   ],
 
                   _buildSectionHeader(_isOneTimeCustomer ? 2 : 4, 'Address & GST', Icons.location_on_outlined),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 14),
                   _buildDetailTabsCard(),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 16),
                   _buildInfoBanner(),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
                 ],
               ),
             ),
@@ -1009,30 +1164,27 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
   }
 
   Widget _buildSectionHeader(int number, String title, IconData icon) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
       children: [
-        Row(
-          children: [
-            Container(
-              width: 30,
-              height: 30,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                gradient: _Premium.gradient(Colors.black87),
-                shape: BoxShape.circle,
-                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.22), blurRadius: 8, offset: const Offset(0, 3))],
-              ),
-              child: Text('$number', style: JoynTypography.caption.copyWith(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13)),
-            ),
-            const SizedBox(width: 10),
-            Icon(icon, size: 17, color: JoynColors.primary),
-            const SizedBox(width: 6),
-            Text(title, style: JoynTypography.bodyLarge.copyWith(fontWeight: FontWeight.w800, fontSize: 17, letterSpacing: -0.2, color: JoynColors.primary)),
-          ],
+        Container(
+          width: 28,
+          height: 28,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            gradient: _Premium.gradient(JoynColors.primary),
+            shape: BoxShape.circle,
+            boxShadow: _Premium.chipShadow(JoynColors.primary),
+          ),
+          child: Text('$number', style: JoynTypography.caption.copyWith(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13)),
         ),
-        const SizedBox(height: 8),
-        Container(height: 1.2, decoration: BoxDecoration(gradient: LinearGradient(colors: [JoynColors.border, JoynColors.border.withValues(alpha: 0.0)]))),
+        const SizedBox(width: 10),
+        Container(
+          padding: const EdgeInsets.all(5),
+          decoration: BoxDecoration(color: JoynColors.primary.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(8)),
+          child: Icon(icon, size: 15, color: JoynColors.primary),
+        ),
+        const SizedBox(width: 8),
+        Text(title, style: JoynTypography.bodyLarge.copyWith(fontWeight: FontWeight.w800, fontSize: 16.5, letterSpacing: -0.2, color: Colors.black87)),
       ],
     );
   }
@@ -1044,14 +1196,13 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
       decoration: BoxDecoration(
         gradient: _Premium.surfaceGradient,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: JoynColors.border, width: 1.2),
+        border: _Premium.hairline(),
         boxShadow: _Premium.cardShadow,
       ),
       child: Column(
         children: [
           Center(child: _buildPhotoPicker()),
-          const SizedBox(height: 18),
-
+          const SizedBox(height: 20),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1060,11 +1211,9 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
               Expanded(child: _buildPriorityDropdown()),
             ],
           ),
-
-          const SizedBox(height: 20),
-          Container(height: 1, color: JoynColors.border),
           const SizedBox(height: 18),
-
+          Container(height: 1, color: JoynColors.border.withValues(alpha: 0.7)),
+          const SizedBox(height: 18),
           _buildFormField(label: 'Party Name *', hintText: 'Enter party name', controller: _partyNameController, icon: Icons.person_outline_rounded),
           const SizedBox(height: 10),
           Align(
@@ -1072,13 +1221,20 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
             child: InkWell(
               onTap: _addPartyThroughContacts,
               borderRadius: BorderRadius.circular(8),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.contacts_rounded, size: 15, color: JoynColors.primary),
-                  const SizedBox(width: 6),
-                  Text('Add party through contacts', style: JoynTypography.caption.copyWith(fontSize: 12.5, fontWeight: FontWeight.w700, color: JoynColors.primary)),
-                ],
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(3),
+                      decoration: BoxDecoration(color: JoynColors.primary.withValues(alpha: 0.10), shape: BoxShape.circle),
+                      child: const Icon(Icons.contacts_rounded, size: 12, color: JoynColors.primary),
+                    ),
+                    const SizedBox(width: 6),
+                    Text('Add party through contacts', style: JoynTypography.caption.copyWith(fontSize: 12.5, fontWeight: FontWeight.w700, color: JoynColors.primary)),
+                  ],
+                ),
               ),
             ),
           ),
@@ -1086,7 +1242,6 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
           _buildFormField(label: 'Contact Number', hintText: 'Enter contact number', controller: _contactNumberController, keyboardType: TextInputType.phone, icon: Icons.call_outlined),
           const SizedBox(height: 16),
           _buildFormField(label: 'Email Address', hintText: 'Enter email address', controller: _emailController, keyboardType: TextInputType.emailAddress, icon: Icons.email_outlined),
-          const SizedBox(height: 16),
         ],
       ),
     );
@@ -1099,7 +1254,7 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
       decoration: BoxDecoration(
         gradient: _Premium.surfaceGradient,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: JoynColors.border, width: 1.2),
+        border: _Premium.hairline(),
         boxShadow: _Premium.cardShadow,
       ),
       child: Column(
@@ -1122,37 +1277,56 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
   }
 
   Widget _buildAsOfDateField() {
+    final formattedDate =
+        '${_asOfDate.day.toString().padLeft(2, '0')}/${_asOfDate.month.toString().padLeft(2, '0')}/${_asOfDate.year}';
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('As of Date', style: JoynTypography.bodyMedium.copyWith(fontSize: 13, fontWeight: FontWeight.w700, color: JoynColors.secondaryText)),
+        Text('As of Date',
+            style: JoynTypography.bodyMedium.copyWith(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: JoynColors.secondaryText,
+                letterSpacing: 0.1)),
         const SizedBox(height: 6),
         InkWell(
           onTap: _pickAsOfDate,
           borderRadius: BorderRadius.circular(16),
           child: Container(
             height: 54,
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: JoynColors.border, width: 1.2), boxShadow: _Premium.fieldShadow),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: _Premium.hairline(),
+              boxShadow: _Premium.fieldShadow,
+            ),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Icon(Icons.calendar_today_outlined, size: 14, color: JoynColors.primary),
-                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                      color: JoynColors.primary.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(9)),
+                  child: Icon(Icons.calendar_today_outlined,
+                      size: 13, color: JoynColors.primary),
+                ),
+                const SizedBox(width: 10),
                 Expanded(
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      '${_asOfDate.day.toString().padLeft(2, '0')}/${_asOfDate.month.toString().padLeft(2, '0')}/${_asOfDate.year}',
-                      maxLines: 1,
-                      softWrap: false,
-                      style: JoynTypography.bodyLarge.copyWith(fontSize: 14.5, fontWeight: FontWeight.w600),
+                  child: Text(
+                    formattedDate,
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.ellipsis,
+                    style: JoynTypography.bodyLarge.copyWith(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ),
-                const SizedBox(width: 4),
-                const Icon(Icons.keyboard_arrow_down_rounded, color: JoynColors.primary, size: 18),
+                const Icon(Icons.keyboard_arrow_down_rounded,
+                    color: JoynColors.primary, size: 18),
               ],
             ),
           ),
@@ -1177,11 +1351,18 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
 
   Widget _buildBalancePill({required String label, required IconData icon, required Color color, required bool selected, required VoidCallback onTap}) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(vertical: 11),
-        decoration: BoxDecoration(color: selected ? Colors.white : Colors.transparent, borderRadius: BorderRadius.circular(13), boxShadow: selected ? _Premium.fieldShadow : null),
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: selected ? Colors.white : Colors.transparent,
+          borderRadius: BorderRadius.circular(13),
+          boxShadow: selected ? [BoxShadow(color: color.withValues(alpha: 0.18), blurRadius: 10, offset: const Offset(0, 3))] : null,
+        ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -1202,7 +1383,12 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
       child: Container(
         height: 54,
         padding: const EdgeInsets.symmetric(horizontal: 14),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: hasLimit ? JoynColors.primary.withValues(alpha: 0.35) : JoynColors.border, width: 1.2), boxShadow: _Premium.fieldShadow),
+        decoration: BoxDecoration(
+          color: hasLimit ? JoynColors.primary.withValues(alpha: 0.04) : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: hasLimit ? JoynColors.primary.withValues(alpha: 0.4) : JoynColors.border, width: 1.2),
+          boxShadow: _Premium.fieldShadow,
+        ),
         child: Row(
           children: [
             Container(
@@ -1214,7 +1400,7 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
             Expanded(
               child: Text(
                 hasLimit ? 'Credit Limit: ₹${_creditLimitController.text}' : 'Set Credit Limit',
-                style: JoynTypography.bodyLarge.copyWith(fontSize: 14.5, fontWeight: FontWeight.w600, color: JoynColors.primary),
+                style: JoynTypography.bodyLarge.copyWith(fontSize: 14.5, fontWeight: FontWeight.w700, color: JoynColors.primary),
               ),
             ),
             Icon(Icons.chevron_right_rounded, size: 18, color: JoynColors.secondaryText.withValues(alpha: 0.6)),
@@ -1228,7 +1414,7 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(gradient: _Premium.surfaceGradient, borderRadius: BorderRadius.circular(20), border: Border.all(color: JoynColors.border, width: 1.2), boxShadow: _Premium.cardShadow),
+      decoration: BoxDecoration(gradient: _Premium.surfaceGradient, borderRadius: BorderRadius.circular(20), border: _Premium.hairline(), boxShadow: _Premium.cardShadow),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1240,7 +1426,10 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
                 final selected = _selectedCategory == category;
                 return GestureDetector(
                   onLongPress: () => _confirmDeleteCategory(category),
-                  onTap: () => setState(() => _selectedCategory = category),
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    setState(() => _selectedCategory = category);
+                  },
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 160),
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
@@ -1250,7 +1439,16 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
                       borderRadius: BorderRadius.circular(20),
                       boxShadow: selected ? _Premium.chipShadow(JoynColors.primary) : null,
                     ),
-                    child: Text(category, style: JoynTypography.caption.copyWith(fontSize: 12.5, fontWeight: FontWeight.w700, color: selected ? Colors.white : JoynColors.secondaryText)),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (selected) ...[
+                          const Icon(Icons.check_rounded, size: 13, color: Colors.white),
+                          const SizedBox(width: 4),
+                        ],
+                        Text(category, style: JoynTypography.caption.copyWith(fontSize: 12.5, fontWeight: FontWeight.w700, color: selected ? Colors.white : JoynColors.secondaryText)),
+                      ],
+                    ),
                   ),
                 );
               }),
@@ -1271,8 +1469,14 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          Text('Long press a category to delete it', style: JoynTypography.caption.copyWith(fontSize: 11, color: JoynColors.secondaryText.withValues(alpha: 0.65))),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Icon(Icons.info_outline_rounded, size: 12, color: JoynColors.secondaryText.withValues(alpha: 0.6)),
+              const SizedBox(width: 4),
+              Text('Long press a category to delete it', style: JoynTypography.caption.copyWith(fontSize: 11, color: JoynColors.secondaryText.withValues(alpha: 0.65))),
+            ],
+          ),
         ],
       ),
     );
@@ -1281,7 +1485,7 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
   Widget _buildDetailTabsCard() {
     return Container(
       width: double.infinity,
-      decoration: BoxDecoration(gradient: _Premium.surfaceGradient, borderRadius: BorderRadius.circular(20), border: Border.all(color: JoynColors.border, width: 1.2), boxShadow: _Premium.cardShadow),
+      decoration: BoxDecoration(gradient: _Premium.surfaceGradient, borderRadius: BorderRadius.circular(20), border: _Premium.hairline(), boxShadow: _Premium.cardShadow),
       child: Column(
         children: [
           Padding(
@@ -1301,7 +1505,10 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
   Widget _buildDetailTabButton(String label, int index) {
     final selected = _selectedDetailTab == index;
     return GestureDetector(
-      onTap: () => setState(() => _selectedDetailTab = index),
+      onTap: () {
+        HapticFeedback.selectionClick();
+        setState(() => _selectedDetailTab = index);
+      },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
         curve: Curves.easeOut,
@@ -1319,8 +1526,7 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
       children: [
         _buildFormField(label: 'Billing Address', hintText: 'Enter billing address', controller: _billingAddressController, maxLines: 2, icon: Icons.location_on_outlined),
         const SizedBox(height: 14),
-        _buildDropdownField(label: 'State', value: _selectedState ?? 'Select State', icon: Icons.map_outlined, onTap: _showStatePicker),
-        const SizedBox(height: 14),
+        _buildDropdownField(label: 'State', value: _selectedState ?? 'Select State', icon: Icons.map_outlined, onTap: _showStatePicker, isPlaceholder: _selectedState == null),
       ],
     );
   }
@@ -1341,16 +1547,25 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
   Widget _buildInfoBanner() {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: JoynColors.primary.withValues(alpha: 0.04), borderRadius: BorderRadius.circular(16), border: Border.all(color: JoynColors.primary.withValues(alpha: 0.10), width: 1)),
+      decoration: BoxDecoration(
+        color: JoynColors.primary.withValues(alpha: 0.045),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: JoynColors.primary.withValues(alpha: 0.12), width: 1),
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(width: 26, height: 26, decoration: BoxDecoration(color: JoynColors.primary.withValues(alpha: 0.10), shape: BoxShape.circle), child: const Icon(Icons.info_outline_rounded, size: 14, color: JoynColors.primary)),
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(color: JoynColors.primary.withValues(alpha: 0.10), shape: BoxShape.circle),
+            child: const Icon(Icons.info_outline_rounded, size: 14, color: JoynColors.primary),
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               'Parties are people you do business with. Use them for invoices and to keep track of your payables & receivables.',
-              style: JoynTypography.caption.copyWith(fontSize: 12, color: JoynColors.secondaryText, height: 1.45),
+              style: JoynTypography.caption.copyWith(fontSize: 12, color: JoynColors.secondaryText, height: 1.5),
             ),
           ),
         ],
@@ -1360,33 +1575,66 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
 
   Widget _buildBottomButtons() {
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
-      decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 18, offset: const Offset(0, -4))]),
+      padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 24, offset: const Offset(0, -8))],
+        borderRadius: const BorderRadius.only(topLeft: Radius.circular(24), topRight: Radius.circular(24)),
+      ),
       child: SafeArea(
         top: false,
         child: Row(
           children: [
-            if (!_isEditMode)
+            if (!_isEditMode) ...[
               Expanded(
-                child: JoynButton(text: 'Save & New', variant: JoynButtonVariant.outlined, onPressed: () => _saveToDatabase(andNew: true)),
+                flex: 3,
+                child: SizedBox(
+                  height: 52,
+                  child: OutlinedButton(
+                    onPressed: () => _saveToDatabase(andNew: true),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.black87,
+                      side: BorderSide(color: JoynColors.border.withValues(alpha: 0.9), width: 1.4),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      backgroundColor: Colors.white,
+                    ),
+                    child: const Text('Save & New', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+                  ),
+                ),
               ),
-            if (!_isEditMode) const SizedBox(width: 12),
+              const SizedBox(width: 12),
+            ],
             Expanded(
-              flex: 2,
+              flex: 4,
               child: Container(
-                decoration: BoxDecoration(gradient: _Premium.gradient(JoynColors.primary), borderRadius: BorderRadius.circular(16), boxShadow: _Premium.chipShadow(JoynColors.primary)),
+                height: 52,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: _Premium.chipShadow(JoynColors.primary),
+                ),
                 child: Material(
                   color: Colors.transparent,
                   borderRadius: BorderRadius.circular(16),
                   child: InkWell(
                     borderRadius: BorderRadius.circular(16),
                     onTap: () => _saveToDatabase(),
-                    child: Container(
-                      height: 52,
-                      alignment: Alignment.center,
-                      child: Text(
-                        _isEditMode ? 'Update Party' : (_isOneTimeCustomer ? 'Add Customer' : 'Save Party'),
-                        style: JoynTypography.buttonText.copyWith(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white),
+                    child: Ink(
+                      decoration: BoxDecoration(
+                        gradient: _Premium.gradient(JoynColors.primary),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Center(
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(_isEditMode ? Icons.check_circle_outline_rounded : Icons.save_outlined, size: 17, color: Colors.white),
+                            const SizedBox(width: 8),
+                            Text(
+                              _isEditMode ? 'Update Party' : (_isOneTimeCustomer ? 'Add Customer' : 'Save Party'),
+                              style: JoynTypography.buttonText.copyWith(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -1403,22 +1651,22 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: JoynTypography.bodyMedium.copyWith(fontSize: 13, fontWeight: FontWeight.w700, color: JoynColors.secondaryText)),
+        Text(label, style: JoynTypography.bodyMedium.copyWith(fontSize: 12.5, fontWeight: FontWeight.w700, color: JoynColors.secondaryText, letterSpacing: 0.1)),
         const SizedBox(height: 6),
         Container(
-          constraints: BoxConstraints(minHeight: maxLines > 1 ? 80 : 54),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: JoynColors.border, width: 1.2), boxShadow: _Premium.fieldShadow),
+          constraints: BoxConstraints(minHeight: maxLines > 1 ? 84 : 54),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: _Premium.hairline(), boxShadow: _Premium.fieldShadow),
           child: Row(
             crossAxisAlignment: maxLines > 1 ? CrossAxisAlignment.start : CrossAxisAlignment.center,
             children: [
               if (icon != null) ...[
                 Padding(
-                  padding: EdgeInsets.only(top: maxLines > 1 ? 14 : 0),
+                  padding: EdgeInsets.only(top: maxLines > 1 ? 12 : 0),
                   child: Container(
                     padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(color: JoynColors.primary.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10)),
-                    child: Icon(icon, size: 16, color: JoynColors.primary),
+                    decoration: BoxDecoration(color: JoynColors.primary.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(9)),
+                    child: Icon(icon, size: 15, color: JoynColors.primary),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -1428,13 +1676,14 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
                   controller: controller,
                   keyboardType: keyboardType,
                   maxLines: maxLines,
-                  style: JoynTypography.bodyLarge.copyWith(fontSize: 15, fontWeight: FontWeight.w600),
+                  cursorColor: JoynColors.primary,
+                  style: JoynTypography.bodyLarge.copyWith(fontSize: 14.5, fontWeight: FontWeight.w600),
                   decoration: InputDecoration(
                     hintText: hintText,
-                    hintStyle: JoynTypography.bodyLarge.copyWith(color: JoynColors.secondaryText.withValues(alpha: 0.5), fontSize: 14.5, fontWeight: FontWeight.w500),
+                    hintStyle: JoynTypography.bodyLarge.copyWith(color: JoynColors.secondaryText.withValues(alpha: 0.5), fontSize: 14, fontWeight: FontWeight.w500),
                     border: InputBorder.none,
                     isDense: true,
-                    contentPadding: EdgeInsets.symmetric(vertical: maxLines > 1 ? 14 : 0),
+                    contentPadding: EdgeInsets.symmetric(vertical: maxLines > 1 ? 12 : 0),
                   ),
                 ),
               ),
@@ -1445,35 +1694,47 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
     );
   }
 
-  Widget _buildDropdownField({required String label, required String value, required VoidCallback onTap, IconData? icon}) {
+  Widget _buildDropdownField({required String label, required String value, required VoidCallback onTap, IconData? icon, bool isPlaceholder = false}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: JoynTypography.bodyMedium.copyWith(fontSize: 13, fontWeight: FontWeight.w700, color: JoynColors.secondaryText)),
+        Text(label, style: JoynTypography.bodyMedium.copyWith(fontSize: 12.5, fontWeight: FontWeight.w700, color: JoynColors.secondaryText, letterSpacing: 0.1)),
         const SizedBox(height: 6),
         InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(16),
           child: Container(
             height: 54,
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: JoynColors.border, width: 1.2), boxShadow: _Premium.fieldShadow),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: _Premium.hairline(), boxShadow: _Premium.fieldShadow),
             child: Row(
               children: [
                 if (icon != null) ...[
                   Container(
                     padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(color: JoynColors.primary.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10)),
-                    child: Icon(icon, size: 16, color: JoynColors.primary),
+                    decoration: BoxDecoration(color: JoynColors.primary.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(9)),
+                    child: Icon(icon, size: 15, color: JoynColors.primary),
                   ),
                   const SizedBox(width: 10),
                 ],
-                Expanded(child: Text(value, maxLines: 1, overflow: TextOverflow.ellipsis, style: JoynTypography.bodyLarge.copyWith(fontSize: 14.5, fontWeight: FontWeight.w600))),
+                Expanded(
+                  child: Text(
+                    value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: JoynTypography.bodyLarge.copyWith(
+                      fontSize: 14.5,
+                      fontWeight: isPlaceholder ? FontWeight.w500 : FontWeight.w700,
+                      color: isPlaceholder ? JoynColors.secondaryText.withValues(alpha: 0.6) : Colors.black87,
+                    ),
+                  ),
+                ),
                 const Icon(Icons.keyboard_arrow_down_rounded, color: JoynColors.primary, size: 20),
               ],
             ),
           ),
         ),
+
       ],
     );
   }

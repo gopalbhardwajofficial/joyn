@@ -7,1089 +7,1238 @@ import '../../../core/theme/joyn_colors.dart';
 import '../../../core/theme/joyn_typography.dart';
 import '../models/sales_models.dart';
 import '../data/sales_repository.dart';
+import 'add_sale_order_screen.dart';
+// ⚠️ Adjust this import path to wherever InvoicePreviewScreen actually lives in your project.
+import 'package:joyn/features/invoice/presentation/InvoicePreviewScreen.dart';
 
+class _P {
+  static const double rMd = 14;
+  static const double rLg = 18;
+
+  static List<BoxShadow> soft = [
+    BoxShadow(
+        color: Colors.black.withValues(alpha: 0.04),
+        blurRadius: 16,
+        offset: const Offset(0, 4)),
+    BoxShadow(
+        color: Colors.black.withValues(alpha: 0.02),
+        blurRadius: 4,
+        offset: const Offset(0, 1)),
+  ];
+  static List<BoxShadow> glow(Color color, double opacity) => [
+    BoxShadow(
+        color: color.withValues(alpha: opacity),
+        blurRadius: 24,
+        spreadRadius: -4,
+        offset: const Offset(0, 8)),
+  ];
+
+  static LinearGradient get primaryGrad => LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [
+      Color.lerp(JoynColors.primary, Colors.white, 0.20) ??
+          JoynColors.primary,
+      JoynColors.primary,
+      Color.lerp(JoynColors.primary, Colors.black, 0.22) ??
+          JoynColors.primary,
+    ],
+    stops: const [0.0, 0.5, 1.0],
+  );
+  static LinearGradient get heroGrad => LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [
+      Color.lerp(JoynColors.primary, Colors.white, 0.05) ??
+          JoynColors.primary,
+      Color.lerp(JoynColors.primary, Colors.black, 0.15) ??
+          JoynColors.primary,
+    ],
+  );
+  static Color get infoSoft => JoynColors.primary.withValues(alpha: 0.08);
+  static Color get successSoft => JoynColors.success.withValues(alpha: 0.10);
+  static Color get errorSoft => JoynColors.error.withValues(alpha: 0.10);
+  static Color get warningSoft =>
+      const Color(0xFFF59E0B).withValues(alpha: 0.10);
+  static const Color warningColor = Color(0xFFF59E0B);
+}
+
+class _HeroWavePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.06)
+      ..style = PaintingStyle.fill;
+    final path = Path();
+    path.moveTo(0, size.height * 0.6);
+    path.quadraticBezierTo(size.width * 0.25, size.height * 0.35,
+        size.width * 0.5, size.height * 0.55);
+    path.quadraticBezierTo(size.width * 0.75, size.height * 0.75,
+        size.width, size.height * 0.4);
+    path.lineTo(size.width, size.height);
+    path.lineTo(0, size.height);
+    path.close();
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _AnimatedEntry extends StatefulWidget {
+  final Widget child;
+  final int delayMs;
+  const _AnimatedEntry({required this.child, this.delayMs = 0});
+
+  @override
+  State<_AnimatedEntry> createState() => _AnimatedEntryState();
+}
+
+class _AnimatedEntryState extends State<_AnimatedEntry>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _fade;
+  late Animation<Offset> _slide;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 480));
+    _fade = CurvedAnimation(parent: _controller, curve: Curves.easeOut);
+    _slide = Tween<Offset>(begin: const Offset(0, 0.05), end: Offset.zero)
+        .animate(
+        CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
+    Future.delayed(Duration(milliseconds: widget.delayMs), () {
+      if (mounted) _controller.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _fade,
+      child: SlideTransition(position: _slide, child: widget.child),
+    );
+  }
+}
+
+class _SectionCard extends StatelessWidget {
+  final Widget child;
+  final EdgeInsetsGeometry? padding;
+  const _SectionCard({required this.child, this.padding});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: padding ?? const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(_P.rLg),
+        boxShadow: _P.soft,
+        border: Border.all(color: JoynColors.border.withValues(alpha: 0.4)),
+      ),
+      child: child,
+    );
+  }
+}
+
+// ==================== Main Screen ====================
 class SaleOrderDetailScreen extends StatefulWidget {
   final SaleOrderModel order;
+  final VoidCallback? onChanged; // ✅ callback for list refresh
 
-  const SaleOrderDetailScreen({super.key, required this.order});
+  const SaleOrderDetailScreen({
+    super.key,
+    required this.order,
+    this.onChanged,
+  });
 
   @override
   State<SaleOrderDetailScreen> createState() => _SaleOrderDetailScreenState();
 }
 
 class _SaleOrderDetailScreenState extends State<SaleOrderDetailScreen> {
-  late List<OrderItemModel> _items;
-  final SalesRepository _repository = SalesRepository();
-  double _partyBalance = 0.0;
-
-  static const Color _fieldBorder = Color(0xFFE2E5EA);
-  static const Color _successGreen = Color(0xFF16A34A);
-  static const Color _warningOrange = Color(0xFFF59E0B);
-
-  static const List<String> _paymentTypes = ['Cash', 'Card', 'UPI', 'Bank Transfer', 'Cheque', 'Online'];
-
-  static const List<String> _indianStates = [
-    'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat',
-    'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka', 'Kerala', 'Madhya Pradesh',
-    'Maharashtra', 'Manipur', 'Meghalaya', 'Mizoram', 'Nagaland', 'Odisha', 'Punjab', 'Rajasthan',
-    'Sikkim', 'Tamil Nadu', 'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal',
-    'Andaman and Nicobar Islands', 'Chandigarh', 'Dadra and Nagar Haveli and Daman and Diu',
-    'Delhi', 'Jammu and Kashmir', 'Ladakh', 'Lakshadweep', 'Puducherry',
-  ];
-
-  late TextEditingController _customerNameController;
-  late TextEditingController _phoneController;
-  late TextEditingController _descriptionController;
-  late String _paymentType;
-  late String _stateOfSupply;
-  late String _dateStr;
-  late double _receivedAmount;
-  bool _isSaving = false;
+  final SalesRepository _salesRepository = SalesRepository();
+  late SaleOrderModel _order;
+  List<OrderItemModel> _items = [];
 
   @override
   void initState() {
     super.initState();
+    _order = widget.order;
+    _parseItems();
+  }
+
+  void _parseItems() {
     try {
-      _items = widget.order.items.map((map) => OrderItemModel.fromJson(map)).toList();
+      _items =
+          _order.items.map((map) => OrderItemModel.fromJson(map)).toList();
     } catch (e) {
-      _items = [];
       debugPrint('Error parsing items: $e');
     }
-    _customerNameController = TextEditingController(text: widget.order.customerName);
-    _phoneController = TextEditingController(text: widget.order.customerPhone);
-    _descriptionController = TextEditingController(text: widget.order.description);
-    _paymentType = widget.order.paymentType.isEmpty ? _paymentTypes.first : widget.order.paymentType;
-    _stateOfSupply = widget.order.stateOfSupply;
-    _dateStr = widget.order.date;
-    _receivedAmount = widget.order.receivedAmount;
-    _loadPartyBalance();
   }
 
-  @override
-  void dispose() {
-    _customerNameController.dispose();
-    _phoneController.dispose();
-    _descriptionController.dispose();
-    super.dispose();
+  // ==================== CALCULATIONS ====================
+  double get _subtotal => _items.fold(0.0, (s, i) => s + i.subtotal);
+
+  double get _totalDiscount =>
+      _items.fold(0.0, (s, i) => s + i.discountAmount);
+
+  double get _totalTax => _items.fold(0.0, (s, i) => s + i.taxAmount);
+
+  int get _totalQty => _items.fold(0, (s, i) => s + i.qty);
+
+  double get _totalAmount => _items.fold(0.0, (s, i) => s + i.total);
+
+  double get _receivedAmount => _order.receivedAmount;
+
+  double get _balanceDue {
+    final due = _totalAmount - _receivedAmount;
+    return due < 0 ? 0 : due;
   }
 
-  Future<void> _loadPartyBalance() async {
-    // In a real app, fetch from repository
-    setState(() {
-      _partyBalance = 100.00; // placeholder – replace with actual data
-    });
+  bool get _isPaid => _balanceDue <= 0;
+  bool get _isCredit => _order.paymentMode.toLowerCase() == 'credit';
+
+  String get _effectiveTaxRate {
+    if (_subtotal <= 0 || _totalTax <= 0) return '0';
+    return ((_totalTax / _subtotal) * 100).toStringAsFixed(2);
   }
 
-  Future<void> _pickDate() async {
-    DateTime initialDate = DateTime.now();
-    final parts = _dateStr.split('/');
-    if (parts.length == 3) {
-      final d = int.tryParse(parts[0]);
-      final m = int.tryParse(parts[1]);
-      final y = int.tryParse(parts[2]);
-      if (d != null && m != null && y != null) initialDate = DateTime(y, m, d);
-    }
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: initialDate,
-      firstDate: DateTime(2000),
-      lastDate: DateTime(2100),
-    );
-    if (picked != null && mounted) {
-      setState(() {
-        _dateStr = '${picked.day.toString().padLeft(2, '0')}/${picked.month.toString().padLeft(2, '0')}/${picked.year}';
-      });
-    }
-  }
-
-  Future<void> _pickFromList({
-    required String title,
-    required List<String> options,
-    required String currentValue,
-    required ValueChanged<String> onSelected,
-  }) async {
-    final selected = await showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: Colors.white,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (sheetContext) => SafeArea(
-        child: SizedBox(
-          height: MediaQuery.of(sheetContext).size.height * 0.6,
-          child: Column(
-            children: [
-              Container(
-                width: 42,
-                height: 5,
-                margin: const EdgeInsets.symmetric(vertical: 12),
-                decoration: BoxDecoration(color: const Color(0xFFD1D5DB), borderRadius: BorderRadius.circular(10)),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    title,
-                    style: JoynTypography.titleMedium.copyWith(fontSize: 17, fontWeight: FontWeight.w800, color: JoynColors.primary),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Expanded(
-                child: ListView.builder(
-                  itemCount: options.length,
-                  itemBuilder: (context, index) {
-                    final option = options[index];
-                    final isSelected = option == currentValue;
-                    return ListTile(
-                      title: Text(
-                        option,
-                        style: JoynTypography.bodyMedium.copyWith(
-                          fontSize: 15,
-                          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                          color: isSelected ? JoynColors.primary : Colors.black87,
-                        ),
-                      ),
-                      trailing: isSelected ? Icon(Icons.check_rounded, color: JoynColors.primary) : null,
-                      onTap: () => Navigator.pop(sheetContext, option),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-    if (selected != null && mounted) {
-      setState(() => onSelected(selected));
-    }
-  }
-
-  void _toggleReceived() {
-    setState(() {
-      _receivedAmount = _receivedAmount >= widget.order.totalAmount ? 0.0 : widget.order.totalAmount;
-    });
-  }
-
-  Future<void> _saveChanges() async {
-    FocusScope.of(context).unfocus();
-    setState(() => _isSaving = true);
-
-    // NOTE: this updates the in-memory/UI state only. Wire this up to your
-    // SalesRepository's update method (e.g. _repository.updateSaleOrder(...))
-    // once you confirm its exact signature against your SaleOrderModel.
-    await Future.delayed(const Duration(milliseconds: 300));
-
-    if (!mounted) return;
-    setState(() => _isSaving = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Sale updated successfully!'),
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: _successGreen,
-        margin: const EdgeInsets.all(16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      ),
-    );
-  }
-
-  void _showMoreOptions(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 42,
-                height: 5,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFD1D5DB),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'More Options',
-                    style: JoynTypography.titleMedium.copyWith(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.2,
-                      color: JoynColors.primary,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              _buildMenuItem(
-                icon: Icons.copy_rounded,
-                label: 'Duplicate',
-                color: const Color(0xFF2563EB),
-                onTap: () {
-                  Navigator.pop(sheetContext);
-                  _showComingSoon(context, 'Duplicate');
-                },
-              ),
-              _buildMenuItem(
-                icon: Icons.payments_outlined,
-                label: 'Receive Payment',
-                color: const Color(0xFF16A34A),
-                onTap: () {
-                  Navigator.pop(sheetContext);
-                  _showComingSoon(context, 'Receive Payment');
-                },
-              ),
-              _buildMenuItem(
-                icon: Icons.keyboard_return_rounded,
-                label: 'Return',
-                color: const Color(0xFFF59E0B),
-                onTap: () {
-                  Navigator.pop(sheetContext);
-                  _showComingSoon(context, 'Return');
-                },
-              ),
-              _buildMenuItem(
-                icon: Icons.local_shipping_outlined,
-                label: 'Delivery Challan',
-                color: const Color(0xFF7C3AED),
-                onTap: () {
-                  Navigator.pop(sheetContext);
-                  _showComingSoon(context, 'Delivery Challan');
-                },
-              ),
-              _buildMenuItem(
-                icon: Icons.picture_as_pdf_outlined,
-                label: 'Share as PDF',
-                color: const Color(0xFFC0202B),
-                onTap: () {
-                  Navigator.pop(sheetContext);
-                  _showComingSoon(context, 'Share as PDF');
-                },
-              ),
-              _buildMenuItem(
-                icon: Icons.receipt_long_outlined,
-                label: 'Generate E-Invoice',
-                color: const Color(0xFF0284C7),
-                onTap: () {
-                  Navigator.pop(sheetContext);
-                  _showComingSoon(context, 'Generate E-Invoice');
-                },
-              ),
-              const SizedBox(height: 8),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: TextButton(
-                    onPressed: () => Navigator.pop(sheetContext),
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      backgroundColor: JoynColors.chipBackground,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                    child: Text(
-                      'Cancel',
-                      style: JoynTypography.bodyMedium.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: JoynColors.secondaryText,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMenuItem({
-    required IconData icon,
-    required String label,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        child: Row(
-          children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: color.withValues(alpha: 0.15), width: 1),
-              ),
-              child: Icon(icon, color: color, size: 20),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Text(
-                label,
-                style: JoynTypography.bodyLarge.copyWith(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: JoynColors.primary,
-                ),
-              ),
-            ),
-            const Icon(Icons.chevron_right_rounded, size: 20, color: JoynColors.secondaryText),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showComingSoon(BuildContext context, String feature) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$feature feature coming soon'),
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: JoynColors.primary,
-        margin: const EdgeInsets.all(16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        duration: const Duration(seconds: 2),
-      ),
-    );
-  }
-
+  // ==================== ACTIONS ====================
   Future<void> _deleteOrder() async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: Text('Delete Sale?', style: JoynTypography.titleMedium.copyWith(fontSize: 17, fontWeight: FontWeight.w700)),
+        title: Text('Delete Sale?',
+            style: JoynTypography.titleMedium
+                .copyWith(fontSize: 17, fontWeight: FontWeight.w700)),
         content: Text(
-          'Delete Invoice #${widget.order.invoiceNo} for ${widget.order.customerName}?',
-          style: JoynTypography.bodyMedium.copyWith(fontSize: 13.5, color: JoynColors.secondaryText),
+          'Delete Invoice #${_order.invoiceNo} for ${_order.customerName}?',
+          style: JoynTypography.bodyMedium.copyWith(
+              fontSize: 13.5, color: JoynColors.secondaryText),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: Text('Delete', style: TextStyle(color: JoynColors.error, fontWeight: FontWeight.w700)),
+            child: Text('Delete',
+                style: TextStyle(
+                    color: JoynColors.error, fontWeight: FontWeight.w700)),
           ),
         ],
       ),
     );
 
     if (confirmed == true) {
-      await _repository.deleteSaleOrder(widget.order.id);
+      await _salesRepository.deleteSaleOrder(_order.id);
+      if (!mounted) return;
+
+      widget.onChanged?.call();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Sale deleted successfully!'),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: JoynColors.error,
+          margin: const EdgeInsets.all(16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        ),
+      );
+      Navigator.of(context).pop(true);
+    }
+  }
+
+  Future<void> _editOrder() async {
+    HapticFeedback.lightImpact();
+
+    final result = await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AddSaleOrderScreen(existingOrder: _order),
+      ),
+    );
+
+    if (result != null && mounted) {
+      final orders = await _salesRepository.getSaleOrders();
+      final updated = orders.firstWhere(
+            (o) => o.id == _order.id,
+        orElse: () => _order,
+      );
+      setState(() {
+        _order = updated;
+        _parseItems();
+      });
+
+      widget.onChanged?.call();
+
       if (mounted) {
+        HapticFeedback.mediumImpact();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Sale deleted successfully!'),
+            content: const Text('Updated successfully!'),
             behavior: SnackBarBehavior.floating,
-            backgroundColor: JoynColors.error,
+            backgroundColor: JoynColors.success,
             margin: const EdgeInsets.all(16),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           ),
         );
-        Navigator.of(context).pop();
       }
     }
   }
 
+  // ✅ CHANGED — ab plain text share ki jagah InvoicePreviewScreen pe navigate karta hai
+  void _shareOrder() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => InvoicePreviewScreen(
+          data: InvoicePreviewData(
+            invoiceNo: _order.invoiceNo,
+            date: _order.date,
+            customerName: _order.isOneTimeCustomer
+                ? 'One Time Customer'
+                : _order.customerName,
+            customerPhone: _order.isOneTimeCustomer ? '' : _order.customerPhone,
+            items: _items,
+            totalAmount: _totalAmount,
+            receivedAmount: _receivedAmount,
+            // TODO: business details ko apni Business Profile se pull karo
+            businessName: 'Your Business',
+            businessPhone: '',
+            businessEmail: '',
+            title: 'Tax Invoice',
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final balanceDue = widget.order.totalAmount - _receivedAmount;
-    final isFullyReceived = _receivedAmount >= widget.order.totalAmount && widget.order.totalAmount > 0;
-
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        scrolledUnderElevation: 0.5,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, size: 22, color: JoynColors.primary),
-          onPressed: () => context.pop(),
-        ),
-        centerTitle: true,
-        title: Text(
-          'Sale',
-          style: JoynTypography.titleMedium.copyWith(
-            fontSize: 19,
-            fontWeight: FontWeight.w700,
-            letterSpacing: -0.2,
+      backgroundColor: JoynColors.background,
+      // ✅ Poori screen ab ek hi scroll view mein — header bhi scroll ke saath jayega
+      body: Column(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _buildHeroHeader(),
+                  const SizedBox(height: 12),
+                  _AnimatedEntry(
+                      delayMs: 0, child: _buildCustomerSection()),
+                  const SizedBox(height: 12),
+                  _AnimatedEntry(delayMs: 60, child: _buildItemsSection()),
+                  const SizedBox(height: 12),
+                  _AnimatedEntry(
+                      delayMs: 120, child: _buildSummarySection()),
+                  const SizedBox(height: 12),
+                  _AnimatedEntry(
+                      delayMs: 180, child: _buildPaymentSection()),
+                  if (_order.description.isNotEmpty ||
+                      _order.termsAndConditions.isNotEmpty ||
+                      _order.stateOfSupply.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    _AnimatedEntry(
+                        delayMs: 240, child: _buildAdditionalSection()),
+                  ],
+                  const SizedBox(height: 12),
+                  _AnimatedEntry(
+                      delayMs: 300, child: _buildMetaSection()),
+                  const SizedBox(height: 16),
+                ],
+              ),
+            ),
           ),
-        ),
-        actions: [
-          IconButton(
-            onPressed: () => _showComingSoon(context, 'Share'),
-            icon: const Icon(Icons.ios_share_rounded, size: 20, color: JoynColors.secondaryText),
-          ),
-          IconButton(
-            onPressed: () => _showMoreOptions(context),
-            icon: const Icon(Icons.more_vert_rounded, size: 22, color: JoynColors.secondaryText),
-          ),
+          _buildBottomBar(),
         ],
       ),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-          children: [
-            // Invoice No. / Date row, split by a vertical divider
-            Container(
-              decoration: const BoxDecoration(
-                border: Border(bottom: BorderSide(color: _fieldBorder, width: 1)),
-              ),
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              child: IntrinsicHeight(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(
-                      child: _buildDropdownLabel(
-                        label: 'Invoice No.',
-                        value: widget.order.invoiceNo.toString(),
-                      ),
-                    ),
-                    const VerticalDivider(color: _fieldBorder, width: 1, thickness: 1),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: InkWell(
-                        onTap: _pickDate,
-                        child: _buildDropdownLabel(
-                          label: 'Date',
-                          value: _dateStr,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+    );
+  }
 
-            const SizedBox(height: 14),
-
-            // Party Balance
-            Align(
-              alignment: Alignment.centerRight,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'Party Balance:  ',
-                    style: JoynTypography.bodyMedium.copyWith(fontSize: 14, color: JoynColors.secondaryText),
-                  ),
-                  Text(
-                    '₹${_partyBalance.toStringAsFixed(2)}',
-                    style: JoynTypography.bodyMedium.copyWith(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: _successGreen,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 10),
-
-            // Customer Name field
-            TextFormField(
-              controller: _customerNameController,
-              style: JoynTypography.bodyMedium.copyWith(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.black87),
-              decoration: _fieldDecoration(label: 'Customer Name *'),
-            ),
-
-            const SizedBox(height: 16),
-
-            // Phone Number field
-            TextFormField(
-              controller: _phoneController,
-              keyboardType: TextInputType.phone,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(10)],
-              style: JoynTypography.bodyMedium.copyWith(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.black87),
-              decoration: _fieldDecoration(label: 'Phone Number'),
-            ),
-
-            const SizedBox(height: 20),
-
-            // Billed Items header bar
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: JoynColors.primary,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  // ==================== Hero Header (chota / compact) ====================
+  Widget _buildHeroHeader() {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: _P.heroGrad,
+        boxShadow: _P.glow(JoynColors.primary, 0.25),
+        borderRadius: const BorderRadius.only(
+          bottomLeft: Radius.circular(24),
+          bottomRight: Radius.circular(24),
+        ),
+      ),
+      child: Stack(
+        children: [
+          Positioned.fill(child: CustomPaint(painter: _HeroWavePainter())),
+          SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
+              child: Column(
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.expand_more_rounded, size: 18, color: Colors.white),
+                      InkWell(
+                        borderRadius: BorderRadius.circular(18),
+                        onTap: () => Navigator.of(context).pop(true),
+                        child: Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.15),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.2)),
+                          ),
+                          child: const Icon(Icons.arrow_back,
+                              color: Colors.white, size: 16),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Sale Details',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -0.3,
+                                )),
+                            const SizedBox(height: 1),
+                            Text(
+                              'Invoice #${_order.invoiceNo}  •  ${_order.date}',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.75),
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                      _buildHeaderIconBtn(
+                        icon: Icons.share_rounded,
+                        onTap: _shareOrder,
+                      ),
                       const SizedBox(width: 6),
-                      Text(
-                        'Billed Items',
-                        style: JoynTypography.bodyMedium.copyWith(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                        ),
+                      _buildHeaderIconBtn(
+                        icon: Icons.edit_outlined,
+                        onTap: _editOrder,
+                      ),
+                      const SizedBox(width: 6),
+                      _buildHeaderIconBtn(
+                        icon: Icons.delete_outline_rounded,
+                        onTap: _deleteOrder,
                       ),
                     ],
                   ),
+                  const SizedBox(height: 12),
                   Row(
                     children: [
-                      Text(
-                        'Rate excl. tax',
-                        style: JoynTypography.caption.copyWith(fontSize: 12, color: Colors.white70),
+                      Expanded(
+                        child: _buildHeroStat(
+                          icon: Icons.currency_rupee_rounded,
+                          label: 'Total',
+                          value: '₹${_totalAmount.toStringAsFixed(0)}',
+                        ),
                       ),
-                      const Icon(Icons.expand_more_rounded, size: 16, color: Colors.white70),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildHeroStat(
+                          icon: Icons.payments_outlined,
+                          label: 'Received',
+                          value: '₹${_receivedAmount.toStringAsFixed(0)}',
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildHeroStat(
+                          icon: _isPaid
+                              ? Icons.check_circle_outline
+                              : Icons.warning_amber_rounded,
+                          label: _isPaid ? 'Paid' : 'Due',
+                          value: '₹${_balanceDue.toStringAsFixed(0)}',
+                          danger: !_isPaid,
+                        ),
+                      ),
                     ],
                   ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            // Items
-            ..._items.map((item) => _buildItemCard(item)),
-
-            const SizedBox(height: 4),
-
-            // Ticket-style totals card
-            ClipPath(
-              clipper: _TicketBottomClipper(),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.fromLTRB(4, 12, 4, 18),
-                decoration: BoxDecoration(
-                  color: JoynColors.chipBackground,
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                ),
-                child: Column(
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'Total Amount',
-                          style: JoynTypography.bodyMedium.copyWith(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.black87,
-                          ),
-                        ),
-                        Text(
-                          '₹${widget.order.totalAmount.toStringAsFixed(2)}',
-                          style: JoynTypography.bodyMedium.copyWith(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: JoynColors.primary,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 6),
-                      child: _DashedDivider(),
-                    ),
-                    InkWell(
-                      onTap: _toggleReceived,
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.2)),
+                      ),
                       child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          Row(
-                            children: [
-                              Icon(
-                                isFullyReceived ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
-                                size: 20,
-                                color: JoynColors.primary,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                'Received',
-                                style: JoynTypography.bodyMedium.copyWith(fontSize: 14, color: Colors.black87),
-                              ),
-                            ],
+                          Icon(
+                            _isCredit
+                                ? Icons.account_balance_wallet_outlined
+                                : Icons.payments_outlined,
+                            color: Colors.white,
+                            size: 12,
                           ),
+                          const SizedBox(width: 5),
                           Text(
-                            '₹${_receivedAmount.toStringAsFixed(2)}',
-                            style: JoynTypography.bodyMedium.copyWith(fontSize: 14, color: Colors.black87),
+                            '${_order.paymentMode}  •  ${_order.paymentType}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ],
                       ),
                     ),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 6),
-                      child: _DashedDivider(),
-                    ),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'Balance Due',
-                          style: JoynTypography.bodyMedium.copyWith(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: _successGreen,
-                          ),
-                        ),
-                        Text(
-                          '₹${balanceDue.toStringAsFixed(2)}',
-                          style: JoynTypography.bodyMedium.copyWith(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: _successGreen,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 20),
-
-            // Payment Type
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Payment Type',
-                  style: JoynTypography.bodyMedium.copyWith(fontSize: 14, color: JoynColors.secondaryText),
-                ),
-                InkWell(
-                  onTap: () => _pickFromList(
-                    title: 'Select Payment Type',
-                    options: _paymentTypes,
-                    currentValue: _paymentType,
-                    onSelected: (value) => _paymentType = value,
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: _successGreen.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Icon(Icons.currency_rupee_rounded, size: 14, color: _successGreen),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        _paymentType,
-                        style: JoynTypography.bodyMedium.copyWith(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.black87),
-                      ),
-                      const Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: JoynColors.secondaryText),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 6),
-
-            InkWell(
-              onTap: () => _showComingSoon(context, 'Add Payment Type'),
-              child: Text(
-                '+ Add Payment Type',
-                style: JoynTypography.bodyMedium.copyWith(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w700,
-                  color: const Color(0xFF2563EB),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 16),
-            const Divider(color: _fieldBorder, height: 1),
-            const SizedBox(height: 16),
-
-            // State of Supply
-            InkWell(
-              onTap: () => _pickFromList(
-                title: 'Select State of Supply',
-                options: _indianStates,
-                currentValue: _stateOfSupply,
-                onSelected: (value) => _stateOfSupply = value,
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'State of Supply',
-                    style: JoynTypography.bodyMedium.copyWith(fontSize: 14, color: JoynColors.secondaryText),
-                  ),
-                  Row(
-                    children: [
-                      Text(
-                        _stateOfSupply.isEmpty ? 'Select' : _stateOfSupply,
-                        style: JoynTypography.bodyMedium.copyWith(fontSize: 14, fontWeight: FontWeight.w700, color: JoynColors.primary),
-                      ),
-                      const Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: JoynColors.secondaryText),
-                    ],
                   ),
                 ],
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
 
-            const SizedBox(height: 16),
-            const Divider(color: _fieldBorder, height: 1),
-            const SizedBox(height: 16),
-
-            // Description + attach image
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: TextFormField(
-                    controller: _descriptionController,
-                    maxLines: 3,
-                    style: JoynTypography.bodyMedium.copyWith(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.black87),
-                    decoration: _fieldDecoration(label: 'Description', placeholder: 'Add Note', minHeight: 64),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Stack(
-                  children: [
-                    Container(
-                      width: 64,
-                      height: 64,
-                      decoration: BoxDecoration(
-                        border: Border.all(color: _fieldBorder),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(Icons.image_outlined, size: 24, color: JoynColors.secondaryText),
-                    ),
-                    Positioned(
-                      top: -4,
-                      right: -4,
-                      child: Container(
-                        padding: const EdgeInsets.all(2),
-                        decoration: const BoxDecoration(color: Color(0xFF2563EB), shape: BoxShape.circle),
-                        child: const Icon(Icons.add, size: 14, color: Colors.white),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 16),
-
-            // Add Document
-            InkWell(
-              onTap: () => _showComingSoon(context, 'Add Document'),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 18),
-                decoration: BoxDecoration(
-                  border: Border.all(color: _fieldBorder),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Column(
-                  children: [
-                    const Icon(Icons.description_outlined, size: 22, color: JoynColors.secondaryText),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Add Document',
-                      style: JoynTypography.bodyMedium.copyWith(fontSize: 13.5, color: JoynColors.secondaryText),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 6),
-
-            Text(
-              'Internet is required to upload',
-              style: JoynTypography.caption.copyWith(fontSize: 11, color: JoynColors.secondaryText),
-            ),
-
-            const SizedBox(height: 16),
-            const Divider(color: _fieldBorder, height: 1),
-            const SizedBox(height: 4),
-
-            // Terms & Conditions expandable header
-            InkWell(
-              onTap: () => _showComingSoon(context, 'Terms & Conditions'),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Terms & Conditions',
-                      style: JoynTypography.bodyMedium.copyWith(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.black87),
-                    ),
-                    const Icon(Icons.keyboard_arrow_down_rounded, size: 22, color: Color(0xFF2563EB)),
-                  ],
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 20),
-
-            // Delete & Save Buttons
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: _deleteOrder,
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      side: const BorderSide(color: _fieldBorder),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    child: Text(
-                      'Delete',
-                      style: JoynTypography.bodyMedium.copyWith(fontWeight: FontWeight.w700, color: Colors.black87, fontSize: 15),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: _isSaving ? null : _saveChanges,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: JoynColors.primary,
-                      elevation: 0,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    child: _isSaving
-                        ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
-                        : Text(
-                      'Save',
-                      style: JoynTypography.bodyMedium.copyWith(fontWeight: FontWeight.w700, color: Colors.white, fontSize: 15),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 12),
-          ],
+  Widget _buildHeaderIconBtn({
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.15),
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
         ),
+        child: Icon(icon, color: Colors.white, size: 15),
       ),
     );
   }
 
-  /// A label above value, with a trailing dropdown chevron — used for the
-  /// Invoice No. / Date row that has no visible box border.
-  Widget _buildDropdownLabel({required String label, required String value}) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              label,
-              style: JoynTypography.caption.copyWith(fontSize: 13, color: JoynColors.secondaryText),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              value,
-              style: JoynTypography.bodyLarge.copyWith(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.black87),
-            ),
-          ],
-        ),
-        const Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: JoynColors.secondaryText),
-      ],
-    );
-  }
-
-  /// Shared InputDecoration for the notched-label bordered fields, matching
-  /// the "Customer Name *" / "Phone Number" / "Description" look in the design.
-  InputDecoration _fieldDecoration({required String label, String placeholder = '', double minHeight = 52}) {
-    return InputDecoration(
-      isDense: true,
-      constraints: BoxConstraints(minHeight: minHeight),
-      labelText: label,
-      hintText: placeholder,
-      hintStyle: JoynTypography.bodyMedium.copyWith(fontSize: 14, color: JoynColors.secondaryText),
-      labelStyle: JoynTypography.bodyMedium.copyWith(fontSize: 14, color: JoynColors.secondaryText),
-      floatingLabelBehavior: FloatingLabelBehavior.always,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: _fieldBorder),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: _fieldBorder),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
-        borderSide: BorderSide(color: JoynColors.primary),
-      ),
-    );
-  }
-
-  Widget _buildItemCard(OrderItemModel item) {
-    final discountPercent = item.subtotal > 0 ? (item.discountAmount / item.subtotal * 100) : 0;
-
+  Widget _buildHeroStat({
+    required IconData icon,
+    required String label,
+    required String value,
+    bool danger = false,
+  }) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: JoynColors.chipBackground,
-        borderRadius: BorderRadius.circular(10),
+        color: Colors.white.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: _fieldBorder),
-                    ),
-                    child: Text(
-                      '#${_items.indexOf(item) + 1}',
-                      style: JoynTypography.caption.copyWith(fontSize: 11, fontWeight: FontWeight.w700, color: JoynColors.secondaryText),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    item.itemName,
-                    style: JoynTypography.bodyMedium.copyWith(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.black87),
-                  ),
+              Icon(icon,
+                  size: 11, color: Colors.white.withValues(alpha: 0.85)),
+              const SizedBox(width: 4),
+              Text(label,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.75),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                  )),
+            ],
+          ),
+          const SizedBox(height: 3),
+          Text(value,
+              style: TextStyle(
+                color: danger ? const Color(0xFFFFB4AB) : Colors.white,
+                fontSize: 13.5,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.2,
+              )),
+        ],
+      ),
+    );
+  }
+
+  // ==================== Sections ====================
+  Widget _buildCustomerSection() {
+    return _SectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionHeader(
+            icon: Icons.person_outline_rounded,
+            title: 'Customer Details',
+          ),
+          const SizedBox(height: 16),
+          _detailRow('Customer Name',
+              _order.customerName.isEmpty ? '—' : _order.customerName),
+          if (_order.customerPhone.isNotEmpty)
+            _detailRow('Phone Number', _order.customerPhone),
+          if (_order.partyId.isNotEmpty)
+            _detailRow('Party ID', _order.partyId),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildItemsSection() {
+    return _SectionCard(
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+                colors: [
+                  JoynColors.primary.withValues(alpha: 0.14),
+                  JoynColors.primary.withValues(alpha: 0.04),
                 ],
               ),
-              Text(
-                '₹${item.total.toStringAsFixed(0)}',
-                style: JoynTypography.bodyMedium.copyWith(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.black87),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(_P.rLg),
+                topRight: Radius.circular(_P.rLg),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    gradient: _P.primaryGrad,
+                    shape: BoxShape.circle,
+                    boxShadow: _P.glow(JoynColors.primary, 0.35),
+                  ),
+                  child: const Icon(Icons.check_rounded,
+                      size: 14, color: Colors.white),
+                ),
+                const SizedBox(width: 10),
+                Text('Billed Items',
+                    style: JoynTypography.bodyMedium.copyWith(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: JoynColors.primary,
+                        letterSpacing: 0.1)),
+                const SizedBox(width: 8),
+                Container(
+                  padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.9),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                        color: JoynColors.primary.withValues(alpha: 0.15)),
+                  ),
+                  child: Text('$_totalQty',
+                      style: JoynTypography.caption.copyWith(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: JoynColors.primary)),
+                ),
+                const Spacer(),
+                Text('${_items.length} items',
+                    style: JoynTypography.caption.copyWith(
+                        fontSize: 11.5,
+                        color: JoynColors.secondaryText,
+                        fontWeight: FontWeight.w600)),
+              ],
+            ),
+          ),
+          if (_items.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Center(
+                child: Text('No items',
+                    style: JoynTypography.bodyMedium
+                        .copyWith(color: JoynColors.secondaryText)),
+              ),
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                children: _items
+                    .asMap()
+                    .entries
+                    .map((e) => _buildDetailItemCard(e.value, e.key))
+                    .toList(),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailItemCard(OrderItemModel item, int index) {
+    final subtotal = item.unitPrice * item.qty;
+    final discountPercent = subtotal > 0
+        ? ((item.discountAmount / subtotal) * 100).toStringAsFixed(1)
+        : '0';
+    final afterDiscount = subtotal - item.discountAmount;
+    final finalTotal = afterDiscount + item.taxAmount;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: JoynColors.chipBackground,
+        borderRadius: BorderRadius.circular(_P.rMd),
+        border: Border.all(color: JoynColors.border.withValues(alpha: 0.5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding:
+                const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  gradient: _P.primaryGrad,
+                  borderRadius: BorderRadius.circular(6),
+                  boxShadow: _P.glow(JoynColors.primary, 0.25),
+                ),
+                child: Text('#${index + 1}',
+                    style: JoynTypography.caption.copyWith(
+                        fontSize: 11,
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800)),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(item.itemName,
+                    style: JoynTypography.bodyLarge.copyWith(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.2,
+                        color: JoynColors.primary)),
+              ),
+              Container(
+                padding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: _P.successSoft,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                      color: JoynColors.success.withValues(alpha: 0.2)),
+                ),
+                child: Text('₹${finalTotal.toStringAsFixed(2)}',
+                    style: JoynTypography.bodyMedium.copyWith(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: JoynColors.success)),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Item Subtotal',
-                style: JoynTypography.caption.copyWith(fontSize: 12, color: JoynColors.secondaryText),
+          if (item.category.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: _P.infoSoft,
+                borderRadius: BorderRadius.circular(6),
               ),
-              Text(
-                '${item.qty} ${item.unit.isNotEmpty ? item.unit : ''} x ${item.unitPrice.toStringAsFixed(0)} = ₹${item.subtotal.toStringAsFixed(0)}',
-                style: JoynTypography.caption.copyWith(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black87),
-              ),
-            ],
+              child: Text(item.category,
+                  style: JoynTypography.caption.copyWith(
+                      fontSize: 10.5,
+                      color: JoynColors.primary,
+                      fontWeight: FontWeight.w700)),
+            ),
+          ],
+          const SizedBox(height: 12),
+          _itemDetailRow(
+            'Quantity',
+            '${item.qty} ${item.unit.isNotEmpty ? item.unit : ''}',
+          ),
+          _itemDetailRow(
+            'Unit Price',
+            '₹${item.unitPrice.toStringAsFixed(2)}',
+          ),
+          _itemDetailRow(
+            'Subtotal (${item.qty} × ₹${item.unitPrice.toStringAsFixed(2)})',
+            '₹${subtotal.toStringAsFixed(2)}',
+            valueColor: JoynColors.primary,
+          ),
+          if (item.discountAmount > 0) ...[
+            _itemDetailRow(
+              'Discount ($discountPercent%)',
+              '-₹${item.discountAmount.toStringAsFixed(2)}',
+              valueColor: JoynColors.error,
+            ),
+            _itemDetailRow(
+              'After Discount',
+              '₹${afterDiscount.toStringAsFixed(2)}',
+              valueColor: JoynColors.secondaryText,
+            ),
+          ],
+          if (item.taxAmount > 0)
+            _itemDetailRow(
+              'Tax @${item.taxRate.toStringAsFixed(2)}%',
+              '+₹${item.taxAmount.toStringAsFixed(2)}',
+              valueColor: _P.warningColor,
+            ),
+          Container(
+            height: 1,
+            margin: const EdgeInsets.symmetric(vertical: 8),
+            color: JoynColors.border.withValues(alpha: 0.4),
           ),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Discount (%): ${discountPercent.toStringAsFixed(0)}',
-                style: JoynTypography.caption.copyWith(fontSize: 12, color: _warningOrange),
-              ),
-              Text(
-                '₹${item.discountAmount.toStringAsFixed(0)}',
-                style: JoynTypography.caption.copyWith(fontSize: 12, fontWeight: FontWeight.w600, color: _warningOrange),
-              ),
-            ],
-          ),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Tax : ${item.taxRate}%',
-                style: JoynTypography.caption.copyWith(fontSize: 12, color: JoynColors.secondaryText),
-              ),
-              Text(
-                '₹${item.taxAmount.toStringAsFixed(0)}',
-                style: JoynTypography.caption.copyWith(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black87),
-              ),
+              Text('Item Total',
+                  style: JoynTypography.bodyMedium.copyWith(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w800,
+                      color: JoynColors.primary)),
+              Text('₹${finalTotal.toStringAsFixed(2)}',
+                  style: JoynTypography.bodyMedium.copyWith(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: JoynColors.primary)),
             ],
           ),
         ],
       ),
     );
   }
-}
 
-/// A horizontal dashed line used inside the totals ticket card.
-class _DashedDivider extends StatelessWidget {
-  final Color color;
-  const _DashedDivider({this.color = const Color(0xFFCBD5E1)});
+  Widget _buildSummarySection() {
+    final afterDiscount = _subtotal - _totalDiscount;
 
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        const dashWidth = 5.0;
-        const dashGap = 4.0;
-        final dashCount = (constraints.maxWidth / (dashWidth + dashGap)).floor();
-        return Row(
-          children: List.generate(
-            dashCount,
-                (_) => Padding(
-              padding: const EdgeInsets.only(right: dashGap),
-              child: Container(width: dashWidth, height: 1, color: color),
-            ),
+    return _SectionCard(
+      child: Column(
+        children: [
+          _sectionHeader(
+            icon: Icons.summarize_outlined,
+            title: 'Summary',
           ),
-        );
-      },
+          const SizedBox(height: 16),
+          _summaryRow('Subtotal', _subtotal),
+          if (_totalDiscount > 0)
+            _summaryRow('Total Discount', -_totalDiscount,
+                color: JoynColors.error),
+          if (_totalDiscount > 0)
+            _summaryRow('After Discount', afterDiscount,
+                color: JoynColors.secondaryText),
+          if (_totalTax > 0)
+            _summaryRow(
+              'Total Tax (${_effectiveTaxRate}%)',
+              _totalTax,
+              color: _P.warningColor,
+            ),
+          Container(
+            height: 1,
+            margin: const EdgeInsets.symmetric(vertical: 12),
+            color: JoynColors.border.withValues(alpha: 0.4),
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Total Amount',
+                  style: JoynTypography.bodyLarge.copyWith(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: JoynColors.primary)),
+              Text('₹${_totalAmount.toStringAsFixed(2)}',
+                  style: JoynTypography.bodyLarge.copyWith(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: JoynColors.primary)),
+            ],
+          ),
+        ],
+      ),
     );
   }
-}
 
-/// Clips a zig-zag "torn ticket" edge along the bottom of the totals card.
-class _TicketBottomClipper extends CustomClipper<Path> {
-  @override
-  Path getClip(Size size) {
-    const double toothHeight = 7;
-    const double approxToothWidth = 16;
-    final int teeth = (size.width / approxToothWidth).round().clamp(4, 200);
-    final double toothWidth = size.width / teeth;
+  Widget _buildPaymentSection() {
+    final dueColor = _isPaid ? JoynColors.success : JoynColors.error;
 
-    final path = Path()
-      ..lineTo(0, 0)
-      ..lineTo(size.width, 0)
-      ..lineTo(size.width, size.height - toothHeight);
-
-    for (int i = teeth; i >= 1; i--) {
-      final double xRight = i * toothWidth;
-      final double xMid = xRight - toothWidth / 2;
-      final double xLeft = xRight - toothWidth;
-      path.lineTo(xMid, size.height);
-      path.lineTo(xLeft, size.height - toothHeight);
-    }
-
-    path.close();
-    return path;
+    return _SectionCard(
+      child: Column(
+        children: [
+          _sectionHeader(
+            icon: Icons.receipt_long_outlined,
+            title: 'Payment Summary',
+          ),
+          const SizedBox(height: 16),
+          _detailRow(
+            'Payment Mode',
+            _order.paymentMode,
+            valueColor: _isCredit ? JoynColors.error : JoynColors.success,
+          ),
+          if (_order.paymentType.isNotEmpty)
+            _detailRow('Payment Type', _order.paymentType),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: JoynColors.chipBackground,
+              borderRadius: BorderRadius.circular(_P.rMd),
+            ),
+            child: Column(
+              children: [
+                _detailRow('Total Amount',
+                    '₹${_totalAmount.toStringAsFixed(2)}'),
+                const SizedBox(height: 6),
+                _detailRow('Received Amount',
+                    '₹${_receivedAmount.toStringAsFixed(2)}',
+                    valueColor: JoynColors.success),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  dueColor.withValues(alpha: 0.10),
+                  dueColor.withValues(alpha: 0.05),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(_P.rMd),
+              border: Border.all(color: dueColor.withValues(alpha: 0.25)),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: dueColor,
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: _P.glow(dueColor, 0.35),
+                  ),
+                  child: Icon(
+                      _isPaid ? Icons.check_circle : Icons.trending_up,
+                      color: Colors.white,
+                      size: 16),
+                ),
+                const SizedBox(width: 12),
+                Text('Balance Due',
+                    style: JoynTypography.bodyMedium.copyWith(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: dueColor,
+                        letterSpacing: 0.1)),
+                const Spacer(),
+                Text('₹${_balanceDue.toStringAsFixed(2)}',
+                    style: JoynTypography.bodyLarge.copyWith(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: dueColor)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
-  @override
-  bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
+  Widget _buildAdditionalSection() {
+    return _SectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionHeader(
+            icon: Icons.tune_rounded,
+            title: 'Additional Details',
+          ),
+          const SizedBox(height: 16),
+          if (_order.stateOfSupply.isNotEmpty)
+            _detailRow('State of Supply', _order.stateOfSupply),
+          if (_order.description.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text('Description / Note',
+                style: JoynTypography.caption.copyWith(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: JoynColors.secondaryText,
+                    letterSpacing: 0.2)),
+            const SizedBox(height: 6),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: JoynColors.chipBackground,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(_order.description,
+                  style: JoynTypography.bodyMedium.copyWith(
+                      fontSize: 13.5, height: 1.5)),
+            ),
+          ],
+          if (_order.termsAndConditions.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Icon(Icons.gavel_rounded,
+                    size: 14, color: JoynColors.secondaryText),
+                const SizedBox(width: 6),
+                Text('Terms & Conditions',
+                    style: JoynTypography.caption.copyWith(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: JoynColors.secondaryText,
+                        letterSpacing: 0.2)),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: JoynColors.chipBackground,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(_order.termsAndConditions,
+                  style: JoynTypography.bodyMedium.copyWith(
+                      fontSize: 12.5, height: 1.5)),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMetaSection() {
+    return _SectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionHeader(
+            icon: Icons.info_outline,
+            title: 'Metadata',
+          ),
+          const SizedBox(height: 16),
+          _detailRow('Order ID', _order.id),
+          _detailRow('Invoice No.', '#${_order.invoiceNo}'),
+          _detailRow('Created', _formatDateTime(_order.createdAt)),
+          _detailRow('One-time Customer',
+              _order.isOneTimeCustomer ? 'Yes' : 'No'),
+        ],
+      ),
+    );
+  }
+
+  // ==================== Row Helpers ====================
+  Widget _sectionHeader({
+    required IconData icon,
+    required String title,
+  }) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: _P.infoSoft,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, size: 14, color: JoynColors.primary),
+        ),
+        const SizedBox(width: 8),
+        Text(title,
+            style: JoynTypography.bodyLarge.copyWith(
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.2,
+                color: JoynColors.primary)),
+      ],
+    );
+  }
+
+  Widget _detailRow(String label, String value, {Color? valueColor}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 130,
+            child: Text(label,
+                style: JoynTypography.bodyMedium.copyWith(
+                    fontSize: 13,
+                    color: JoynColors.secondaryText,
+                    fontWeight: FontWeight.w600)),
+          ),
+          Expanded(
+            child: Text(value,
+                textAlign: TextAlign.right,
+                style: JoynTypography.bodyMedium.copyWith(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: valueColor ?? Colors.black87)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _itemDetailRow(String label, String value,
+      {Color? valueColor, bool bold = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Flexible(
+            child: Text(label,
+                style: JoynTypography.caption.copyWith(
+                    fontSize: 12,
+                    color: JoynColors.secondaryText,
+                    fontWeight: FontWeight.w600)),
+          ),
+          const SizedBox(width: 8),
+          Text(value,
+              style: JoynTypography.caption.copyWith(
+                  fontSize: 12.5,
+                  fontWeight: bold ? FontWeight.w800 : FontWeight.w700,
+                  color: valueColor ?? Colors.black87)),
+        ],
+      ),
+    );
+  }
+
+  Widget _summaryRow(String label, double value, {Color? color}) {
+    final isNegative = value < 0;
+    final display = isNegative
+        ? '-₹${value.abs().toStringAsFixed(2)}'
+        : '₹${value.toStringAsFixed(2)}';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label,
+              style: JoynTypography.bodyMedium.copyWith(
+                  fontSize: 13.5,
+                  color: JoynColors.secondaryText,
+                  fontWeight: FontWeight.w600)),
+          Text(display,
+              style: JoynTypography.bodyMedium.copyWith(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w800,
+                  color: color ?? Colors.black87)),
+        ],
+      ),
+    );
+  }
+
+  String _formatDateTime(DateTime dt) {
+    final d = dt.day.toString().padLeft(2, '0');
+    final m = dt.month.toString().padLeft(2, '0');
+    final y = dt.year;
+    final h = dt.hour.toString().padLeft(2, '0');
+    final min = dt.minute.toString().padLeft(2, '0');
+    return '$d/$m/$y • $h:$min';
+  }
+
+  Widget _buildBottomBar() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withValues(alpha: 0.06),
+              blurRadius: 24,
+              offset: const Offset(0, -8)),
+        ],
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(24),
+          topRight: Radius.circular(24),
+        ),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Row(
+          children: [
+            Expanded(
+              child: SizedBox(
+                height: 52,
+                child: OutlinedButton.icon(
+                  onPressed: _deleteOrder,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: JoynColors.error,
+                    side: BorderSide(
+                        color: JoynColors.error.withValues(alpha: 0.3),
+                        width: 1.5),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(_P.rMd)),
+                  ),
+                  icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                  label: Text('Delete',
+                      style: JoynTypography.caption.copyWith(
+                          fontSize: 14,
+                          color: JoynColors.error,
+                          fontWeight: FontWeight.w700)),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              flex: 2,
+              child: Container(
+                height: 52,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(_P.rMd),
+                  boxShadow: _P.glow(JoynColors.primary, 0.35),
+                ),
+                child: ElevatedButton.icon(
+                  onPressed: _shareOrder,
+                  style: ElevatedButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(_P.rMd)),
+                    elevation: 0,
+                    backgroundColor: Colors.transparent,
+                  ),
+                  icon: const Icon(Icons.share_rounded,
+                      color: Colors.white, size: 18),
+                  label: Text('Share Invoice',
+                      style: JoynTypography.bodyMedium.copyWith(
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                          fontSize: 15,
+                          letterSpacing: 0.2)),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

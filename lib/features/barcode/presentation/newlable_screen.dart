@@ -53,6 +53,14 @@ const _kPresets = <_SizePreset>[
   _SizePreset('50×15\nmm', 50, 15, false),
   _SizePreset('50×50\nmm', 50, 50, false),
   _SizePreset('50×25\nmm', 50, 25, false),
+  _SizePreset('50×40\nmm', 50, 40, false),
+  _SizePreset('60×40\nmm', 60, 40, false),
+  _SizePreset('40×30\nmm', 40, 30, false),
+  _SizePreset('100×100\nmm', 100, 100, false),
+  _SizePreset('100×150\nmm', 100, 150, false),
+  _SizePreset('76×128\nmm', 76, 128, false),
+  _SizePreset('30×100\nmm', 30, 100, false),
+  _SizePreset('Circle\n50mm', 50, 50, true),
 ];
 
 class NewLabelSizeScreen extends StatefulWidget {
@@ -71,6 +79,7 @@ class _NewLabelSizeScreenState extends State<NewLabelSizeScreen> {
   late TextEditingController _nameController;
   int _selectedPresetIndex = -1;
   List<_SizePreset> _presets = List.of(_kPresets);
+  String? _backgroundImagePath;
 
   @override
   void initState() {
@@ -143,8 +152,21 @@ class _NewLabelSizeScreenState extends State<NewLabelSizeScreen> {
       heightMm: _heightMm,
       isCircle: _isCircle,
       name: _nameController.text.trim().isEmpty ? _defaultName() : _nameController.text.trim(),
+      backgroundImagePath: _backgroundImagePath,
     );
     Navigator.of(context).pop(result);
+  }
+
+  Future<void> _pickBackgroundImage() async {
+    final XFile? picked = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 90);
+    if (picked == null) return;
+    HapticFeedback.selectionClick();
+    setState(() => _backgroundImagePath = picked.path);
+  }
+
+  void _removeBackgroundImage() {
+    HapticFeedback.selectionClick();
+    setState(() => _backgroundImagePath = null);
   }
 
   @override
@@ -248,6 +270,45 @@ class _NewLabelSizeScreenState extends State<NewLabelSizeScreen> {
                 ],
               ),
             ),
+            const SizedBox(height: 14),
+            _buildCard(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Text('Background', style: JoynTypography.bodyMedium.copyWith(fontSize: 14, fontWeight: FontWeight.w700, color: JoynColors.secondaryText)),
+                  const Spacer(),
+                  if (_backgroundImagePath != null) ...[
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Image.file(File(_backgroundImagePath!), width: 40, height: 40, fit: BoxFit.cover),
+                    ),
+                    const SizedBox(width: 10),
+                    InkWell(
+                      onTap: _removeBackgroundImage,
+                      borderRadius: BorderRadius.circular(20),
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(color: JoynColors.chipBackground, shape: BoxShape.circle),
+                        child: const Icon(Icons.close_rounded, size: 16, color: JoynColors.error),
+                      ),
+                    ),
+                  ] else
+                    InkWell(
+                      onTap: _pickBackgroundImage,
+                      borderRadius: BorderRadius.circular(20),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(color: JoynColors.chipBackground, borderRadius: BorderRadius.circular(20)),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          const Icon(Icons.image_outlined, size: 15, color: JoynColors.primary),
+                          const SizedBox(width: 6),
+                          Text('Add image', style: JoynTypography.bodyMedium.copyWith(fontSize: 12.5, fontWeight: FontWeight.w700, color: JoynColors.primary)),
+                        ]),
+                      ),
+                    ),
+                ],
+              ),
+            ),
             const SizedBox(height: 26),
             Container(
               decoration: BoxDecoration(
@@ -284,17 +345,26 @@ class _NewLabelSizeScreenState extends State<NewLabelSizeScreen> {
       child: Container(
         width: w,
         height: h,
+        clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: Colors.white,
           shape: _isCircle ? BoxShape.circle : BoxShape.rectangle,
           borderRadius: _isCircle ? null : BorderRadius.circular(10),
           border: Border.all(color: JoynColors.border, width: 1.2),
           boxShadow: _Premium.fieldShadow,
+          image: _backgroundImagePath != null
+              ? DecorationImage(image: FileImage(File(_backgroundImagePath!)), fit: BoxFit.cover)
+              : null,
         ),
         alignment: Alignment.center,
         child: Text(
           '${_widthMm.toInt()}×${_heightMm.toInt()} mm',
-          style: JoynTypography.caption.copyWith(fontSize: 14, fontWeight: FontWeight.w700, color: JoynColors.primary),
+          style: JoynTypography.caption.copyWith(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: _backgroundImagePath != null ? Colors.white : JoynColors.primary,
+            shadows: _backgroundImagePath != null ? [const Shadow(color: Colors.black54, blurRadius: 6)] : null,
+          ),
         ),
       ),
     );

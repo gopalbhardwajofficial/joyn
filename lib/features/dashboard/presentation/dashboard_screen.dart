@@ -31,6 +31,12 @@ class _DashColors {
   static const addButtonText = Color.fromRGBO(255, 255, 255, 1.0);
   static const arrowButtonStart = Color.fromRGBO(32, 32, 38, 1.0);
   static const arrowButtonEnd = Color.fromRGBO(14, 14, 18, 1.0);
+
+  // ── Toggle colors ──
+  static const toggleTrack = Color.fromRGBO(255, 255, 255, 1.0);
+  static const toggleActiveStart = Color.fromRGBO(200, 40, 51, 1.0);
+  static const toggleActiveEnd = Color.fromRGBO(168, 24, 34, 1.0);
+  static const toggleInactiveText = Color.fromRGBO(110, 112, 122, 1.0);
 }
 
 class DashboardScreen extends ConsumerStatefulWidget {
@@ -48,6 +54,9 @@ class DashboardScreen extends ConsumerStatefulWidget {
 class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   int _bottomNavIndex = 0;
   bool _hasTriggeredPopup = false;
+
+  /// Home tab ke andar toggle: 0 = Dashboard, 1 = Overview
+  int _homeTabIndex = 0;
 
   @override
   void initState() {
@@ -107,22 +116,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 ),
               ),
               ListTile(
-                leading: const Icon(Icons.storefront_outlined,
-                    color: JoynColors.primary),
-                title: Text('Business Profile',
-                    style:
-                    JoynTypography.bodyLarge.copyWith(fontSize: 15)),
+                leading: const Icon(Icons.storefront_outlined, color: JoynColors.primary),
+                title: Text('Business Profile', style: JoynTypography.bodyLarge.copyWith(fontSize: 15)),
                 onTap: () {
                   Navigator.pop(context);
                   context.push('/business-profile');
                 },
               ),
               ListTile(
-                leading:
-                const Icon(Icons.logout_rounded, color: JoynColors.error),
-                title: Text('Log Out',
-                    style: JoynTypography.bodyLarge.copyWith(
-                        fontSize: 15, color: JoynColors.error)),
+                leading: const Icon(Icons.logout_rounded, color: JoynColors.error),
+                title: Text('Log Out', style: JoynTypography.bodyLarge.copyWith(fontSize: 15, color: JoynColors.error)),
                 onTap: () async {
                   Navigator.pop(context);
                   await _handleLogout();
@@ -146,42 +149,67 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 
   // ============================================================
-  // PAYMENT IN / OUT FLOW
+  // SNACKBAR HELPER
+  // ============================================================
+  void _showSnack(String msg, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(
+                isError ? Icons.error_outline_rounded : Icons.check_circle_rounded,
+                color: Colors.white,
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Expanded(child: Text(msg)),
+            ],
+          ),
+          backgroundColor: isError ? JoynColors.error : JoynColors.primary,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+  }
+
+  // ============================================================
+  // PAYMENT IN / OUT FLOW  ✅ FULLY WIRED
   // ============================================================
   Future<void> _openPaymentFlow({required bool isPaymentOut}) async {
-    final repo = SalesRepository();
+    // ── Step 1: Show loading while fetching parties
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(color: JoynColors.primary),
+      ),
+    );
 
+    final repo = SalesRepository();
     List<PartyModel> parties = [];
     try {
       parties = await repo.getParties();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to load parties: $e'),
-          backgroundColor: JoynColors.error,
-          behavior: SnackBarBehavior.floating,
-          shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ),
-      );
+      Navigator.of(context).pop(); // close loader
+      _showSnack('Failed to load parties: $e', isError: true);
       return;
     }
 
     if (!mounted) return;
+    Navigator.of(context).pop(); // close loader
+
+    // ── Step 2: No parties → prompt to add one
     if (parties.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('No parties found. Add a party first.'),
-          backgroundColor: JoynColors.primary,
-          behavior: SnackBarBehavior.floating,
-          shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ),
-      );
+      _showSnack('No parties found. Add a party first.', isError: false);
       return;
     }
 
+    // ── Step 3: Party picker sheet
     final selected = await showModalBottomSheet<PartyModel>(
       context: context,
       backgroundColor: JoynColors.background,
@@ -199,25 +227,22 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
     if (selected == null || !mounted) return;
 
+    // ── Step 4: Open PaymentInScreen with forced direction
     final saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => PaymentInScreen(
           party: selected,
-          isPaymentOut: isPaymentOut,
+          isPaymentOut: isPaymentOut, // ✅ forced direction
         ),
       ),
     );
 
+    // ── Step 5: Success feedback
     if (saved == true && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-              isPaymentOut ? 'Payment Out recorded' : 'Payment In recorded'),
-          backgroundColor: JoynColors.primary,
-          behavior: SnackBarBehavior.floating,
-          shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ),
+      _showSnack(
+        isPaymentOut
+            ? 'Payment Out recorded successfully'
+            : 'Payment In recorded successfully',
       );
     }
   }
@@ -228,15 +253,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
     final String appBarTitle = (authState.businessName.isNotEmpty)
         ? authState.businessName
-        : (authState.selectedCompany != null &&
-        authState.selectedCompany!.isNotEmpty)
+        : (authState.selectedCompany != null && authState.selectedCompany!.isNotEmpty)
         ? authState.selectedCompany!
         : 'Welcome User';
 
     Widget body;
     switch (_bottomNavIndex) {
       case 0:
-        body = _buildDashboardView();
+        body = _buildHomeView();
         break;
       case 1:
         body = const SaleOrdersListScreen();
@@ -248,7 +272,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         body = _buildMoreView();
         break;
       default:
-        body = _buildDashboardView();
+        body = _buildHomeView();
     }
 
     return Scaffold(
@@ -303,9 +327,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       child: Text(
                         appBarTitle,
                         style: JoynTypography.bodyLarge.copyWith(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 17,
-                          letterSpacing: -0.2,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 16.5,
+                          letterSpacing: -0.3,
+                          color: const Color(0xFF1A1A1F),
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -423,68 +448,230 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
-  // ============ DASHBOARD VIEW ============
+  // ============================================================
+  // HOME VIEW
+  // ============================================================
+  Widget _buildHomeView() {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+          child: _buildHomeToggle(),
+        ),
+        Expanded(
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 260),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            transitionBuilder: (child, animation) {
+              return FadeTransition(
+                opacity: animation,
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: const Offset(0.03, 0),
+                    end: Offset.zero,
+                  ).animate(animation),
+                  child: child,
+                ),
+              );
+            },
+            child: _homeTabIndex == 0
+                ? KeyedSubtree(
+              key: const ValueKey('home_dash'),
+              child: _buildDashboardSectionCardsList(),
+            )
+                : const OverviewScreen(key: ValueKey('home_overview')),
+          ),
+        ),
+      ],
+    );
+  }
 
-  Widget _buildDashboardView() {
+  Widget _buildHomeToggle() {
+    return Container(
+      height: 50,
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: _DashColors.toggleTrack,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _DashColors.cardBorder, width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 2,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final segWidth = constraints.maxWidth / 2;
+          return Stack(
+            children: [
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 280),
+                curve: Curves.easeOutCubic,
+                left: _homeTabIndex == 0 ? 0 : segWidth,
+                top: 0,
+                bottom: 0,
+                width: segWidth,
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [
+                        _DashColors.toggleActiveStart,
+                        _DashColors.toggleActiveEnd,
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: _DashColors.toggleActiveStart.withValues(alpha: 0.32),
+                        blurRadius: 12,
+                        offset: const Offset(0, 5),
+                      ),
+                      BoxShadow(
+                        color: _DashColors.toggleActiveStart.withValues(alpha: 0.14),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Row(
+                children: [
+                  _buildToggleLabel(
+                    index: 0,
+                    icon: Icons.dashboard_rounded,
+                    label: 'Dashboard',
+                  ),
+                  _buildToggleLabel(
+                    index: 1,
+                    icon: Icons.insights_rounded,
+                    label: 'Overview',
+                  ),
+                ],
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildToggleLabel({
+    required int index,
+    required IconData icon,
+    required String label,
+  }) {
+    final isActive = _homeTabIndex == index;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () {
+          if (_homeTabIndex != index) {
+            setState(() => _homeTabIndex = index);
+          }
+        },
+        behavior: HitTestBehavior.opaque,
+        child: Center(
+          child: AnimatedDefaultTextStyle(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOut,
+            style: JoynTypography.bodyMedium.copyWith(
+              fontSize: 13.5,
+              fontWeight: isActive ? FontWeight.w800 : FontWeight.w600,
+              color: isActive ? Colors.white : _DashColors.toggleInactiveText,
+              letterSpacing: -0.1,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AnimatedScale(
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOutBack,
+                  scale: isActive ? 1.0 : 0.92,
+                  child: Icon(
+                    icon,
+                    size: 16,
+                    color: isActive ? Colors.white : _DashColors.toggleInactiveText,
+                  ),
+                ),
+                const SizedBox(width: 7),
+                Text(label),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDashboardSectionCardsList() {
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
       children: [
         _buildDashboardSectionCard(
           mainIcon: Icons.shopping_cart_outlined,
           title: 'Sale',
           subtitle: 'Manage all your sales',
           primaryActionLabel: 'Add',
+          accent: const Color(0xFF16A34A),
           onPrimaryTap: () => context.push('/add-sale-order'),
           onArrowTap: () => context.push('/sale-orders-list'),
         ),
         const SizedBox(height: 12),
-
         _buildDashboardSectionCard(
           mainIcon: Icons.shopping_bag_outlined,
           title: 'Purchase',
           subtitle: 'Manage all your purchases',
           primaryActionLabel: 'Add',
+          accent: const Color(0xFFEA580C),
           onPrimaryTap: () => context.push('/add-purchase-order'),
           onArrowTap: () => context.push('/purchase-orders-list'),
         ),
         const SizedBox(height: 12),
-
-        _buildDashboardSectionCard(
-          mainIcon: Icons.inventory_2_outlined,
-          title: 'Inventory',
-          subtitle: 'Manage your inventory',
-          primaryActionLabel: 'Add',
-          onPrimaryTap: () => context.push('/add-inventory'),
-          onArrowTap: () => context.push('/manage-inventory'),
-        ),
-        const SizedBox(height: 12),
-
         _buildDashboardSectionCard(
           mainIcon: Icons.people_outline_rounded,
           title: 'Party',
           subtitle: 'Manage all your parties',
           primaryActionLabel: 'Add',
+          accent: const Color(0xFF2563EB),
           onPrimaryTap: () => context.push('/add-party'),
           onArrowTap: () => context.push('/party-list'),
         ),
         const SizedBox(height: 12),
-
         _buildDashboardSectionCard(
           mainIcon: Icons.category_outlined,
           title: 'Items',
           subtitle: 'Manage your item catalog',
           primaryActionLabel: 'Add',
+          accent: const Color(0xFF0891B2),
           onPrimaryTap: () => context.push('/add-new-item'),
           onArrowTap: () => context.push('/items-list'),
         ),
         const SizedBox(height: 12),
-
-        // ============ BARCODE CARD ============
+        _buildDashboardSectionCard(
+          mainIcon: Icons.inventory_2_outlined,
+          title: 'Inventory',
+          subtitle: 'Manage your inventory',
+          primaryActionLabel: 'Add',
+          accent: const Color(0xFF7C3AED),
+          onPrimaryTap: () => context.push('/add-inventory'),
+          onArrowTap: () => context.push('/manage-inventory'),
+        ),
+        const SizedBox(height: 16),
         _buildBarcodeCard(),
-
         const SizedBox(height: 16),
 
-        // ============ PAYMENT IN / OUT BUTTONS ============
+        // ── PAYMENT IN / OUT BUTTONS ──
         Row(
           children: [
             Expanded(
@@ -506,13 +693,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             ),
           ],
         ),
-
         const SizedBox(height: 16),
       ],
     );
   }
 
-  // ============ BARCODE CARD ============
   Widget _buildBarcodeCard() {
     return GestureDetector(
       onTap: () async {
@@ -530,55 +715,72 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         }
       },
       child: Container(
+        width: double.infinity,
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: Colors.blue,
+          gradient: const LinearGradient(
+            colors: [Color(0xFF2563EB), Color(0xFF1D4ED8)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: _DashColors.cardBorder, width: 1),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
+              color: const Color(0xFF2563EB).withValues(alpha: 0.30),
               blurRadius: 16,
               offset: const Offset(0, 6),
             ),
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.02),
-              blurRadius: 2,
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 3,
               offset: const Offset(0, 1),
             ),
           ],
         ),
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Container(
-              width: 42,
-              height: 44,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    '                              +',
-                    style: JoynTypography.bodyLarge.copyWith(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 17.5,
-                      letterSpacing: -0.1,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Generate new barcodes/QR code',
-                    style: JoynTypography.subtitle.copyWith(fontSize: 11.5),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
+              width: 26,
+              height: 26,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.22),
+                borderRadius: BorderRadius.circular(9),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.32),
+                  width: 1,
+                ),
               ),
+              child: const Icon(Icons.add_rounded, size: 18, color: Colors.white),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              'Barcodes & QR',
+              style: JoynTypography.bodyLarge.copyWith(
+                fontWeight: FontWeight.w800,
+                fontSize: 13.5,
+                color: Colors.white,
+                letterSpacing: -0.1,
+                height: 1.1,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 2),
+            const Text(
+              'Generate new barcodes / QR codes',
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 11,
+                height: 1.2,
+                fontWeight: FontWeight.w500,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
             ),
           ],
         ),
@@ -586,7 +788,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
-  // ============ PAYMENT BUTTON ============
   Widget _buildPaymentButton({
     required IconData icon,
     required String label,
@@ -600,7 +801,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           end: Alignment.bottomRight,
           colors: [
             color,
-            Color.lerp(color, Colors.black, 0.18) ?? color,
+            Color.lerp(color, Colors.black, 0.20) ?? color,
           ],
         ),
         borderRadius: BorderRadius.circular(16),
@@ -622,14 +823,23 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(icon, size: 22, color: Colors.white),
-                const SizedBox(width: 8),
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.22),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(icon, size: 17, color: Colors.white),
+                ),
+                const SizedBox(width: 10),
                 Text(
                   label,
                   style: JoynTypography.bodyMedium.copyWith(
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w800,
                     color: Colors.white,
-                    fontSize: 15,
+                    fontSize: 14.5,
+                    letterSpacing: -0.1,
                   ),
                 ),
               ],
@@ -640,12 +850,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
-  // ============ DASHBOARD SECTION CARD ============
   Widget _buildDashboardSectionCard({
     required IconData mainIcon,
     required String title,
     required String subtitle,
     required String primaryActionLabel,
+    required Color accent,
     VoidCallback? onPrimaryTap,
     VoidCallback? onArrowTap,
   }) {
@@ -671,27 +881,26 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       child: Row(
         children: [
           Container(
-            width: 42,
-            height: 44,
+            width: 46,
+            height: 46,
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
+              gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  _DashColors.iconChipBackgroundStart,
-                  _DashColors.iconChipBackgroundEnd,
+                  accent.withValues(alpha: 0.14),
+                  accent.withValues(alpha: 0.06),
                 ],
               ),
-              borderRadius: BorderRadius.circular(13),
-              border: Border.all(color: _DashColors.cardBorder, width: 1),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: accent.withValues(alpha: 0.18),
+                width: 1,
+              ),
             ),
-            child: Icon(
-              mainIcon,
-              color: JoynColors.primary,
-              size: 20,
-            ),
+            child: Icon(mainIcon, color: accent, size: 22),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -700,17 +909,22 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 Text(
                   title,
                   style: JoynTypography.bodyLarge.copyWith(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14.5,
-                    letterSpacing: -0.1,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                    letterSpacing: -0.2,
+                    color: const Color(0xFF16171D),
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: 3),
                 Text(
                   subtitle,
-                  style: JoynTypography.subtitle.copyWith(fontSize: 11.5),
+                  style: JoynTypography.subtitle.copyWith(
+                    fontSize: 11.5,
+                    color: const Color(0xFF8A8D99),
+                    height: 1.2,
+                  ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -726,8 +940,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 onTap: onPrimaryTap,
                 borderRadius: BorderRadius.circular(14),
                 child: Container(
-                  width: 52,
-                  height: 44,
+                  width: 54,
+                  height: 46,
                   padding: const EdgeInsets.symmetric(vertical: 5),
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
@@ -735,14 +949,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       end: Alignment.bottomRight,
                       colors: [
                         _DashColors.addButtonStart,
-                        _DashColors.addButtonEnd
+                        _DashColors.addButtonEnd,
                       ],
                     ),
                     borderRadius: BorderRadius.circular(14),
                     boxShadow: [
                       BoxShadow(
-                        color: _DashColors.addButtonStart
-                            .withValues(alpha: 0.35),
+                        color: _DashColors.addButtonStart.withValues(alpha: 0.35),
                         blurRadius: 12,
                         offset: const Offset(0, 4),
                       ),
@@ -752,19 +965,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(
-                        Icons.add_rounded,
-                        size: 16,
-                        color: _DashColors.addButtonText,
-                      ),
+                      const Icon(Icons.add_rounded, size: 17, color: _DashColors.addButtonText),
                       const SizedBox(height: 1),
                       Text(
                         primaryActionLabel.replaceFirst('Add ', ''),
                         style: JoynTypography.caption.copyWith(
                           color: _DashColors.addButtonText,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 8.5,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 9,
                           height: 1,
+                          letterSpacing: 0.1,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -782,31 +992,27 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               onTap: onArrowTap ?? onPrimaryTap,
               borderRadius: BorderRadius.circular(17),
               child: Container(
-                width: 34,
-                height: 34,
+                width: 36,
+                height: 36,
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
                       _DashColors.arrowButtonStart,
-                      _DashColors.arrowButtonEnd
+                      _DashColors.arrowButtonEnd,
                     ],
                   ),
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.18),
+                      color: Colors.black.withValues(alpha: 0.20),
                       blurRadius: 8,
                       offset: const Offset(0, 3),
                     ),
                   ],
                 ),
-                child: const Icon(
-                  Icons.arrow_forward_rounded,
-                  color: Colors.white,
-                  size: 16,
-                ),
+                child: const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 16),
               ),
             ),
           ),
@@ -815,24 +1021,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
-  // ============ MORE VIEW ============
   Widget _buildMoreView() {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(
-            Icons.more_horiz_rounded,
-            size: 72,
-            color: JoynColors.primary,
-          ),
+          const Icon(Icons.more_horiz_rounded, size: 72, color: JoynColors.primary),
           const SizedBox(height: 16),
           Text(
             'More Options',
-            style: JoynTypography.titleMedium.copyWith(
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
-            ),
+            style: JoynTypography.titleMedium.copyWith(fontSize: 20, fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 8),
           Padding(
@@ -852,9 +1050,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               backgroundColor: JoynColors.primary,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
           ),
           const SizedBox(height: 12),
@@ -866,9 +1062,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               backgroundColor: JoynColors.primary,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
           ),
           const SizedBox(height: 12),
@@ -880,9 +1074,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               backgroundColor: JoynColors.primary,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
           ),
         ],
@@ -954,10 +1146,7 @@ class _PartyPickerSheetState extends State<_PartyPickerSheet> {
             ),
             Text(
               widget.title,
-              style: JoynTypography.titleMedium.copyWith(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-              ),
+              style: JoynTypography.titleMedium.copyWith(fontSize: 16, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 12),
             TextField(
@@ -980,11 +1169,7 @@ class _PartyPickerSheetState extends State<_PartyPickerSheet> {
                   ? Center(
                 child: Padding(
                   padding: const EdgeInsets.all(24),
-                  child: Text(
-                    'No parties found',
-                    style:
-                    JoynTypography.subtitle.copyWith(fontSize: 14),
-                  ),
+                  child: Text('No parties found', style: JoynTypography.subtitle.copyWith(fontSize: 14)),
                 ),
               )
                   : ListView.separated(
@@ -996,19 +1181,12 @@ class _PartyPickerSheetState extends State<_PartyPickerSheet> {
                   final phone = p.contactNumber;
                   return ListTile(
                     leading: CircleAvatar(
-                      backgroundColor:
-                      JoynColors.primary.withValues(alpha: 0.1),
-                      child: const Icon(
-                        Icons.person_outline_rounded,
-                        color: JoynColors.primary,
-                      ),
+                      backgroundColor: JoynColors.primary.withValues(alpha: 0.1),
+                      child: const Icon(Icons.person_outline_rounded, color: JoynColors.primary),
                     ),
                     title: Text(
                       p.name,
-                      style: JoynTypography.bodyLarge.copyWith(
-                        fontSize: 14.5,
-                        fontWeight: FontWeight.w700,
-                      ),
+                      style: JoynTypography.bodyLarge.copyWith(fontSize: 14.5, fontWeight: FontWeight.w700),
                     ),
                     subtitle: phone.isNotEmpty ? Text(phone) : null,
                     onTap: () => Navigator.of(context).pop(p),

@@ -23,7 +23,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 5, // Changed from 2 to 5 to trigger table creation
+      version: 5,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onDowngrade: onDatabaseDowngradeDelete,
@@ -104,6 +104,11 @@ class DatabaseHelper {
         openingBalance REAL DEFAULT 0,
         balanceType TEXT DEFAULT 'toReceive',
         creditLimit REAL,
+        city TEXT DEFAULT '',
+        partyType TEXT DEFAULT 'customer',
+        priorityLevel TEXT DEFAULT 'medium',
+        photoPath TEXT DEFAULT '',
+        avatarIndex INTEGER,
         createdAt TEXT
       )
     ''');
@@ -204,47 +209,25 @@ class DatabaseHelper {
       )
     ''');
 
-    // Insert default roles and categories
     await _insertDefaultRoles(db);
     await _insertDefaultCategories(db);
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
-      // Add new columns to parties
-      try {
-        await db.execute("ALTER TABLE parties ADD COLUMN openingBalance REAL DEFAULT 0");
-      } catch (_) {}
-      try {
-        await db.execute("ALTER TABLE parties ADD COLUMN balanceType TEXT DEFAULT 'toReceive'");
-      } catch (_) {}
-      try {
-        await db.execute("ALTER TABLE parties ADD COLUMN creditLimit REAL");
-      } catch (_) {}
+      await _tryAlter(db, "ALTER TABLE parties ADD COLUMN openingBalance REAL DEFAULT 0");
+      await _tryAlter(db, "ALTER TABLE parties ADD COLUMN balanceType TEXT DEFAULT 'toReceive'");
+      await _tryAlter(db, "ALTER TABLE parties ADD COLUMN creditLimit REAL");
     }
 
     if (oldVersion < 3) {
-      // Add new columns to sales_orders
-      try {
-        await db.execute("ALTER TABLE sales_orders ADD COLUMN partyId TEXT DEFAULT ''");
-      } catch (_) {}
-      try {
-        await db.execute("ALTER TABLE sales_orders ADD COLUMN receivedAmount REAL DEFAULT 0");
-      } catch (_) {}
-      try {
-        await db.execute("ALTER TABLE sales_orders ADD COLUMN paymentType TEXT DEFAULT 'Cash'");
-      } catch (_) {}
-      try {
-        await db.execute("ALTER TABLE sales_orders ADD COLUMN stateOfSupply TEXT DEFAULT ''");
-      } catch (_) {}
-      try {
-        await db.execute("ALTER TABLE sales_orders ADD COLUMN description TEXT DEFAULT ''");
-      } catch (_) {}
-      try {
-        await db.execute("ALTER TABLE sales_orders ADD COLUMN termsAndConditions TEXT DEFAULT ''");
-      } catch (_) {}
+      await _tryAlter(db, "ALTER TABLE sales_orders ADD COLUMN partyId TEXT DEFAULT ''");
+      await _tryAlter(db, "ALTER TABLE sales_orders ADD COLUMN receivedAmount REAL DEFAULT 0");
+      await _tryAlter(db, "ALTER TABLE sales_orders ADD COLUMN paymentType TEXT DEFAULT 'Cash'");
+      await _tryAlter(db, "ALTER TABLE sales_orders ADD COLUMN stateOfSupply TEXT DEFAULT ''");
+      await _tryAlter(db, "ALTER TABLE sales_orders ADD COLUMN description TEXT DEFAULT ''");
+      await _tryAlter(db, "ALTER TABLE sales_orders ADD COLUMN termsAndConditions TEXT DEFAULT ''");
 
-      // Create payments table
       await db.execute('''
         CREATE TABLE IF NOT EXISTS payments (
           id TEXT PRIMARY KEY,
@@ -262,7 +245,6 @@ class DatabaseHelper {
     }
 
     if (oldVersion < 4) {
-      // Drop old items table and recreate with new schema
       await db.execute('DROP TABLE IF EXISTS items');
       await db.execute('''
         CREATE TABLE items (
@@ -291,30 +273,31 @@ class DatabaseHelper {
     }
 
     if (oldVersion < 5) {
-      try {
-        // Create categories table
-        await db.execute('''
-          CREATE TABLE IF NOT EXISTS categories (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT UNIQUE NOT NULL,
-            createdAt TEXT
-          )
-        ''');
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS categories (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT UNIQUE NOT NULL,
+          createdAt TEXT
+        )
+      ''');
 
-        // Create locations table
-        await db.execute('''
-          CREATE TABLE IF NOT EXISTS locations (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT UNIQUE NOT NULL,
-            createdAt TEXT
-          )
-        ''');
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS locations (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT UNIQUE NOT NULL,
+          createdAt TEXT
+        )
+      ''');
 
-        // Insert default categories
-        await _insertDefaultCategories(db);
-      } catch (e) {
-        debugPrint('Error upgrading database to version 5: $e');
-      }
+      await _insertDefaultCategories(db);
+    }
+  }
+
+  Future<void> _tryAlter(Database db, String sql) async {
+    try {
+      await db.execute(sql);
+    } catch (_) {
+      // Column already exists — safe to ignore
     }
   }
 
@@ -387,26 +370,23 @@ class DatabaseHelper {
     await batch.commit(noResult: true);
   }
 
-  // Method to force recreate database
+  /// ⚠️ DEVELOPMENT ONLY — Call manually if you want to wipe data
   Future<void> forceRecreateDatabase() async {
     Directory documentsDirectory = await getApplicationDocumentsDirectory();
     String path = join(documentsDirectory.path, 'joyn_database.db');
 
-    // Close existing database
     if (_database != null) {
       await _database!.close();
       _database = null;
     }
 
-    // Delete database file
     try {
       await deleteDatabase(path);
-      debugPrint('Old database deleted successfully');
+      debugPrint('Old database deleted');
     } catch (e) {
       debugPrint('Error deleting old database: $e');
     }
 
-    // Recreate with fresh schema
     _database = await openDatabase(
       path,
       version: 5,
@@ -415,7 +395,7 @@ class DatabaseHelper {
       onDowngrade: onDatabaseDowngradeDelete,
     );
 
-    debugPrint('New database created successfully');
+    debugPrint('New database created');
   }
 
   Future<void> close() async {

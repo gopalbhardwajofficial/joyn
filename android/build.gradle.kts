@@ -5,6 +5,21 @@ allprojects {
     }
 }
 
+// ✅ NEW: Force all plugins to compile against SDK 36
+subprojects {
+    afterEvaluate {
+        if (plugins.hasPlugin("com.android.library") ||
+            plugins.hasPlugin("com.android.application")) {
+            extensions.configure<com.android.build.gradle.BaseExtension>("android") {
+                if (compileSdkVersion == null ||
+                    (compileSdkVersion?.replace("android-", "")?.toIntOrNull() ?: 0) < 36) {
+                    compileSdkVersion(36)
+                }
+            }
+        }
+    }
+}
+
 val newBuildDir: Directory =
     rootProject.layout.buildDirectory
         .dir("../../build")

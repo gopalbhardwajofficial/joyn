@@ -16,9 +16,7 @@ class SalesRepository {
     Future<void> tryAlter(String sql) async {
       try {
         await db.execute(sql);
-      } catch (_) {
-        // column already exists — fine
-      }
+      } catch (_) {}
     }
 
     await tryAlter("ALTER TABLE parties ADD COLUMN openingBalance REAL DEFAULT 0");
@@ -48,6 +46,9 @@ class SalesRepository {
     await tryAlter("ALTER TABLE sales_orders ADD COLUMN description TEXT DEFAULT ''");
     await tryAlter("ALTER TABLE sales_orders ADD COLUMN termsAndConditions TEXT DEFAULT ''");
 
+    // ✅ purchase_orders me partyId column
+    await tryAlter("ALTER TABLE purchase_orders ADD COLUMN partyId TEXT DEFAULT ''");
+
     await db.execute('''
       CREATE TABLE IF NOT EXISTS payments (
         id TEXT PRIMARY KEY,
@@ -63,7 +64,6 @@ class SalesRepository {
       )
     ''');
 
-    // ======= FIX: Ensure categories table exists and has defaults =======
     await db.execute('''
       CREATE TABLE IF NOT EXISTS categories (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -72,16 +72,17 @@ class SalesRepository {
       )
     ''');
 
-    final catCount = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM categories')) ?? 0;
+    final catCount = Sqflite.firstIntValue(
+        await db.rawQuery('SELECT COUNT(*) FROM categories')) ?? 0;
     if (catCount == 0) {
       final now = DateTime.now().toIso8601String();
       final defaults = ['Grocery', 'Electronics', 'Garments', 'Stationery', 'Other'];
       for (final c in defaults) {
-        await db.insert('categories', {'name': c, 'createdAt': now}, conflictAlgorithm: ConflictAlgorithm.ignore);
+        await db.insert('categories', {'name': c, 'createdAt': now},
+            conflictAlgorithm: ConflictAlgorithm.ignore);
       }
     }
 
-    // ======= FIX: Ensure locations table exists and has defaults =======
     await db.execute('''
       CREATE TABLE IF NOT EXISTS locations (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -90,12 +91,14 @@ class SalesRepository {
       )
     ''');
 
-    final locCount = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM locations')) ?? 0;
+    final locCount = Sqflite.firstIntValue(
+        await db.rawQuery('SELECT COUNT(*) FROM locations')) ?? 0;
     if (locCount == 0) {
       final now = DateTime.now().toIso8601String();
       final defaults = ['Select Location', 'Rack A1', 'Rack A2', 'Warehouse 1', 'Store Front'];
       for (final l in defaults) {
-        await db.insert('locations', {'name': l, 'createdAt': now}, conflictAlgorithm: ConflictAlgorithm.ignore);
+        await db.insert('locations', {'name': l, 'createdAt': now},
+            conflictAlgorithm: ConflictAlgorithm.ignore);
       }
     }
 
@@ -104,7 +107,6 @@ class SalesRepository {
   }
 
   // ============ PARTIES ============
-
   Future<List<PartyModel>> getParties() async {
     final db = await _readyDb();
     final maps = await db.query('parties', orderBy: 'name ASC');
@@ -113,12 +115,14 @@ class SalesRepository {
 
   Future<void> insertParty(PartyModel party) async {
     final db = await _readyDb();
-    await db.insert('parties', party.toDb(), conflictAlgorithm: ConflictAlgorithm.replace);
+    await db.insert('parties', party.toDb(),
+        conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<void> updateParty(PartyModel party) async {
     final db = await _readyDb();
-    await db.update('parties', party.toDb(), where: 'id = ?', whereArgs: [party.id]);
+    await db.update('parties', party.toDb(),
+        where: 'id = ?', whereArgs: [party.id]);
   }
 
   Future<void> deleteParty(String id) async {
@@ -136,7 +140,6 @@ class SalesRepository {
   }
 
   // ============ ITEMS ============
-
   Future<List<InventoryItemModel>> getItems() async {
     final db = await _readyDb();
     final maps = await db.query('items', orderBy: 'name ASC');
@@ -145,12 +148,14 @@ class SalesRepository {
 
   Future<void> insertItem(InventoryItemModel item) async {
     final db = await _readyDb();
-    await db.insert('items', item.toDb(), conflictAlgorithm: ConflictAlgorithm.replace);
+    await db.insert('items', item.toDb(),
+        conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<void> updateItem(InventoryItemModel item) async {
     final db = await _readyDb();
-    await db.update('items', item.toDb(), where: 'id = ?', whereArgs: [item.id]);
+    await db.update('items', item.toDb(),
+        where: 'id = ?', whereArgs: [item.id]);
   }
 
   Future<void> deleteItem(String id) async {
@@ -165,7 +170,8 @@ class SalesRepository {
 
   Future<void> updateItemStock(String itemId, int newStock) async {
     final db = await _readyDb();
-    await db.update('items', {'stock': newStock}, where: 'id = ?', whereArgs: [itemId]);
+    await db.update('items', {'stock': newStock},
+        where: 'id = ?', whereArgs: [itemId]);
   }
 
   // ============ SALES ORDERS ============
@@ -176,28 +182,85 @@ class SalesRepository {
     return maps.map((map) => SaleOrderModel.fromDb(map)).toList();
   }
 
-  Future<List<SaleOrderModel>> getSaleOrdersForParty(String partyId) async {
+  // ✅ partyId se match karega, agar khaali ho to customerName se fallback
+  Future<List<SaleOrderModel>> getSaleOrdersForParty(
+      String partyId, String partyName) async {
     final db = await _readyDb();
-    final maps = await db.query('sales_orders', where: 'partyId = ?', whereArgs: [partyId], orderBy: 'createdAt DESC');
-    return maps.map((map) => SaleOrderModel.fromDb(map)).toList();
+    final nameKey = partyName.trim().toLowerCase();
+    final List<Map<String, Object?>> maps;
+
+    try {
+      // Primary: partyId match OR (partyId empty aur customerName match)
+      maps = await db.query(
+        'sales_orders',
+        where:
+        'partyId = ? OR (COALESCE(partyId, "") = "" AND TRIM(LOWER(customerName)) = ?)',
+        whereArgs: [partyId, nameKey],
+        orderBy: 'createdAt DESC',
+      );
+      debugPrint('🔎 getSaleOrdersForParty("$partyId","$partyName") → ${maps.length} rows');
+      return maps.map((map) => SaleOrderModel.fromDb(map)).toList();
+    } catch (e) {
+      debugPrint('⚠️ Sale primary failed: $e');
+      try {
+        final fallback = await db.query(
+          'sales_orders',
+          where: 'TRIM(LOWER(customerName)) = ?',
+          whereArgs: [nameKey],
+          orderBy: 'createdAt DESC',
+        );
+        debugPrint('🔎 Sale fallback → ${fallback.length} rows');
+        return fallback.map((map) => SaleOrderModel.fromDb(map)).toList();
+      } catch (e2) {
+        debugPrint('❌ Sale fallback failed: $e2');
+        return [];
+      }
+    }
+  }
+
+  // Overload: calls with only partyId → fetch party name from DB
+  Future<List<SaleOrderModel>> getSaleOrdersForPartyById(String partyId) async {
+    final db = await _readyDb();
+    String partyName = '';
+    try {
+      final partyRows = await db.query('parties',
+          where: 'id = ?', whereArgs: [partyId], limit: 1);
+      if (partyRows.isNotEmpty) {
+        partyName = (partyRows.first['name'] as String? ?? '');
+      }
+    } catch (_) {}
+    return getSaleOrdersForParty(partyId, partyName);
   }
 
   Future<int> getNextInvoiceNo() async {
     final db = await _readyDb();
-    final result = await db.rawQuery('SELECT MAX(invoiceNo) as maxNo FROM sales_orders');
+    final result =
+    await db.rawQuery('SELECT MAX(invoiceNo) as maxNo FROM sales_orders');
     final maxNo = (result.first['maxNo'] as int?) ?? 0;
     return maxNo + 1;
   }
 
   Future<void> insertSaleOrder(SaleOrderModel order) async {
     final db = await _readyDb();
-    await db.insert('sales_orders', order.toDb(), conflictAlgorithm: ConflictAlgorithm.replace);
+    await db.insert('sales_orders', order.toDb(),
+        conflictAlgorithm: ConflictAlgorithm.replace);
     await _updateInventoryForSale(order.items);
   }
 
   Future<void> updateSaleOrder(SaleOrderModel order) async {
     final db = await _readyDb();
-    await db.update('sales_orders', order.toDb(), where: 'id = ?', whereArgs: [order.id]);
+
+    final oldMaps = await db.query('sales_orders',
+        where: 'id = ?', whereArgs: [order.id]);
+    if (oldMaps.isNotEmpty) {
+      final oldOrder = SaleOrderModel.fromDb(oldMaps.first);
+      await _reverseInventoryForSale(oldOrder.items);
+    }
+
+    await db.update('sales_orders', order.toDb(),
+        where: 'id = ?', whereArgs: [order.id]);
+
+    await _updateInventoryForSale(order.items);
   }
 
   Future<void> deleteSaleOrder(String id) async {
@@ -220,24 +283,42 @@ class SalesRepository {
     }
   }
 
-  // ============ PAYMENTS ============
+  Future<void> _reverseInventoryForSale(
+      List<Map<String, dynamic>> items) async {
+    if (items.isEmpty) return;
+    final allItems = await getItems();
+    for (final soldItem in items) {
+      final itemName = soldItem['name'] as String? ?? '';
+      final qty = (soldItem['qty'] as num?)?.toInt() ?? 0;
+      for (final invItem in allItems) {
+        if (invItem.name.toLowerCase() == itemName.toLowerCase()) {
+          await updateItemStock(invItem.id, invItem.stock + qty);
+          break;
+        }
+      }
+    }
+  }
 
+  // ============ PAYMENTS ============
   Future<List<PaymentModel>> getPaymentsForParty(String partyId) async {
     final db = await _readyDb();
-    final maps = await db.query('payments', where: 'partyId = ?', whereArgs: [partyId], orderBy: 'createdAt DESC');
+    final maps = await db.query('payments',
+        where: 'partyId = ?', whereArgs: [partyId], orderBy: 'createdAt DESC');
     return maps.map((map) => PaymentModel.fromDb(map)).toList();
   }
 
   Future<int> getNextReceiptNo() async {
     final db = await _readyDb();
-    final result = await db.rawQuery('SELECT MAX(receiptNo) as maxNo FROM payments');
+    final result =
+    await db.rawQuery('SELECT MAX(receiptNo) as maxNo FROM payments');
     final maxNo = (result.first['maxNo'] as int?) ?? 0;
     return maxNo + 1;
   }
 
   Future<void> insertPayment(PaymentModel payment) async {
     final db = await _readyDb();
-    await db.insert('payments', payment.toDb(), conflictAlgorithm: ConflictAlgorithm.replace);
+    await db.insert('payments', payment.toDb(),
+        conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<void> deletePayment(String id) async {
@@ -246,7 +327,16 @@ class SalesRepository {
   }
 
   Future<Map<String, dynamic>> getPartyBalance(String partyId) async {
-    final sales = await getSaleOrdersForParty(partyId);
+    // Pehle party name nikaalo
+    String partyName = '';
+    try {
+      final db = await _readyDb();
+      final rows = await db.query('parties',
+          where: 'id = ?', whereArgs: [partyId], limit: 1);
+      if (rows.isNotEmpty) partyName = (rows.first['name'] as String? ?? '');
+    } catch (_) {}
+
+    final sales = await getSaleOrdersForParty(partyId, partyName);
     final payments = await getPaymentsForParty(partyId);
 
     double dueFromSales = 0;
@@ -266,22 +356,106 @@ class SalesRepository {
   }
 
   // ============ PURCHASE ORDERS ============
-
   Future<List<PurchaseOrderModel>> getPurchaseOrders() async {
     final db = await _readyDb();
     final maps = await db.query('purchase_orders', orderBy: 'createdAt DESC');
     return maps.map((map) => PurchaseOrderModel.fromDb(map)).toList();
   }
 
+  // ✅ Purchase: partyId match, ya partyName match (case-insensitive, trimmed)
+  Future<List<PurchaseOrderModel>> getPurchaseOrdersForParty(
+      String partyId, String partyName) async {
+    final db = await _readyDb();
+    final nameKey = partyName.trim().toLowerCase();
+
+    try {
+      final maps = await db.query(
+        'purchase_orders',
+        where:
+        'partyId = ? OR (COALESCE(partyId, "") = "" AND TRIM(LOWER(partyName)) = ?)',
+        whereArgs: [partyId, nameKey],
+        orderBy: 'createdAt DESC',
+      );
+      debugPrint('🔎 getPurchaseOrdersForParty("$partyId","$partyName") → ${maps.length} rows');
+      return maps.map((map) => PurchaseOrderModel.fromDb(map)).toList();
+    } catch (e) {
+      debugPrint('⚠️ Purchase primary failed: $e');
+      try {
+        final fallback = await db.query(
+          'purchase_orders',
+          where: 'TRIM(LOWER(partyName)) = ?',
+          whereArgs: [nameKey],
+          orderBy: 'createdAt DESC',
+        );
+        debugPrint('🔎 Purchase fallback → ${fallback.length} rows');
+        return fallback.map((map) => PurchaseOrderModel.fromDb(map)).toList();
+      } catch (e2) {
+        debugPrint('❌ Purchase fallback failed: $e2');
+        return [];
+      }
+    }
+  }
+
+  // 🔍 DEBUG helpers
+  Future<void> debugPrintAllSales() async {
+    try {
+      final db = await _readyDb();
+      final rows = await db.rawQuery(
+          'SELECT invoiceNo, partyId, customerName FROM sales_orders ORDER BY createdAt DESC LIMIT 20');
+      debugPrint('=== ALL SALES (max 20) ===');
+      if (rows.isEmpty) {
+        debugPrint('  (sales_orders EMPTY)');
+      } else {
+        for (final r in rows) {
+          debugPrint('  inv#${r['invoiceNo']} | partyId="${r['partyId']}" | name="${r['customerName']}"');
+        }
+      }
+      debugPrint('=== END SALES ===');
+    } catch (e) {
+      debugPrint('❌ debugPrintAllSales: $e');
+    }
+  }
+
+  Future<void> debugPrintAllPurchaseParties() async {
+    try {
+      final db = await _readyDb();
+      final rows = await db.rawQuery(
+          'SELECT orderNo, partyName, partyId FROM purchase_orders ORDER BY createdAt DESC LIMIT 20');
+      debugPrint('=== ALL PURCHASES (max 20) ===');
+      if (rows.isEmpty) {
+        debugPrint('  (purchase_orders EMPTY)');
+      } else {
+        for (final r in rows) {
+          debugPrint('  order#${r['orderNo']} | partyName="${r['partyName']}" | partyId="${r['partyId']}"');
+        }
+      }
+      debugPrint('=== END PURCHASES ===');
+    } catch (e) {
+      debugPrint('❌ debugPrintAllPurchaseParties: $e');
+    }
+  }
+
   Future<void> insertPurchaseOrder(PurchaseOrderModel order) async {
     final db = await _readyDb();
-    await db.insert('purchase_orders', order.toDb(), conflictAlgorithm: ConflictAlgorithm.replace);
+    await db.insert('purchase_orders', order.toDb(),
+        conflictAlgorithm: ConflictAlgorithm.replace);
     await _updateInventoryForPurchase(order.items);
   }
 
   Future<void> updatePurchaseOrder(PurchaseOrderModel order) async {
     final db = await _readyDb();
-    await db.update('purchase_orders', order.toDb(), where: 'id = ?', whereArgs: [order.id]);
+
+    final oldMaps = await db.query('purchase_orders',
+        where: 'id = ?', whereArgs: [order.id]);
+    if (oldMaps.isNotEmpty) {
+      final oldOrder = PurchaseOrderModel.fromDb(oldMaps.first);
+      await _reverseInventoryForPurchase(oldOrder.items);
+    }
+
+    await db.update('purchase_orders', order.toDb(),
+        where: 'id = ?', whereArgs: [order.id]);
+
+    await _updateInventoryForPurchase(order.items);
   }
 
   Future<void> deletePurchaseOrder(String id) async {
@@ -289,7 +463,8 @@ class SalesRepository {
     await db.delete('purchase_orders', where: 'id = ?', whereArgs: [id]);
   }
 
-  Future<void> _updateInventoryForPurchase(List<Map<String, dynamic>> items) async {
+  Future<void> _updateInventoryForPurchase(
+      List<Map<String, dynamic>> items) async {
     if (items.isEmpty) return;
     final allItems = await getItems();
     for (final purchasedItem in items) {
@@ -304,8 +479,23 @@ class SalesRepository {
     }
   }
 
-  // ============ REPORTS DATA ============
+  Future<void> _reverseInventoryForPurchase(
+      List<Map<String, dynamic>> items) async {
+    if (items.isEmpty) return;
+    final allItems = await getItems();
+    for (final purchasedItem in items) {
+      final itemName = purchasedItem['name'] as String? ?? '';
+      final qty = (purchasedItem['qty'] as num?)?.toInt() ?? 0;
+      for (final invItem in allItems) {
+        if (invItem.name.toLowerCase() == itemName.toLowerCase()) {
+          await updateItemStock(invItem.id, invItem.stock - qty);
+          break;
+        }
+      }
+    }
+  }
 
+  // ============ REPORTS ============
   Future<Map<String, dynamic>> getReportsData() async {
     return {
       'youllGet': await getYoullGet(),
@@ -326,15 +516,14 @@ class SalesRepository {
     final db = await _readyDb();
     final now = DateTime.now();
     final result = <String, double>{};
-
     for (int i = 2; i >= 0; i--) {
       final month = DateTime(now.year, now.month - i, 1);
       final monthEnd = DateTime(now.year, now.month - i + 1, 0);
       final monthName = _getMonthName(month.month);
-
-      final monthStartStr = '${month.day.toString().padLeft(2, '0')}/${month.month.toString().padLeft(2, '0')}/${month.year}';
-      final monthEndStr = '${monthEnd.day.toString().padLeft(2, '0')}/${monthEnd.month.toString().padLeft(2, '0')}/${monthEnd.year}';
-
+      final monthStartStr =
+          '${month.day.toString().padLeft(2, '0')}/${month.month.toString().padLeft(2, '0')}/${month.year}';
+      final monthEndStr =
+          '${monthEnd.day.toString().padLeft(2, '0')}/${monthEnd.month.toString().padLeft(2, '0')}/${monthEnd.year}';
       try {
         final sales = await db.rawQuery(
           'SELECT SUM(totalAmount) as total FROM sales_orders WHERE date >= ? AND date <= ?',
@@ -351,7 +540,8 @@ class SalesRepository {
   Future<double> getYoullGet() async {
     final db = await _readyDb();
     try {
-      final result = await db.rawQuery('SELECT SUM(totalAmount) as total FROM sales_orders WHERE paymentMode = "Credit"');
+      final result = await db.rawQuery(
+          'SELECT SUM(totalAmount) as total FROM sales_orders WHERE paymentMode = "Credit"');
       return (result.first['total'] as double?) ?? 0.0;
     } catch (e) {
       return 0.0;
@@ -361,7 +551,8 @@ class SalesRepository {
   Future<double> getYoullGive() async {
     final db = await _readyDb();
     try {
-      final result = await db.rawQuery('SELECT SUM(totalAmount) as total FROM purchase_orders');
+      final result = await db
+          .rawQuery('SELECT SUM(totalAmount) as total FROM purchase_orders');
       return (result.first['total'] as double?) ?? 0.0;
     } catch (e) {
       return 0.0;
@@ -372,8 +563,8 @@ class SalesRepository {
     final db = await _readyDb();
     final now = DateTime.now();
     final monthStart = '01/${now.month.toString().padLeft(2, '0')}/${now.year}';
-    final monthEnd = '${DateTime(now.year, now.month + 1, 0).day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}';
-
+    final monthEnd =
+        '${DateTime(now.year, now.month + 1, 0).day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}';
     try {
       final result = await db.rawQuery(
         'SELECT SUM(totalAmount) as total FROM purchase_orders WHERE date >= ? AND date <= ?',
@@ -388,7 +579,8 @@ class SalesRepository {
   Future<double> getCashInHand() async {
     final db = await _readyDb();
     try {
-      final cashSales = await db.rawQuery('SELECT SUM(totalAmount) as total FROM sales_orders WHERE paymentMode = "Cash"');
+      final cashSales = await db.rawQuery(
+          'SELECT SUM(totalAmount) as total FROM sales_orders WHERE paymentMode = "Cash"');
       return (cashSales.first['total'] as double?) ?? 0.0;
     } catch (e) {
       return 0.0;
@@ -398,7 +590,8 @@ class SalesRepository {
   Future<Map<String, dynamic>> getInventorySummary() async {
     final db = await _readyDb();
     try {
-      final stockValue = await db.rawQuery('SELECT SUM(stock * purchasePrice) as total FROM items');
+      final stockValue = await db
+          .rawQuery('SELECT SUM(stock * purchasePrice) as total FROM items');
       final noOfItems = await db.rawQuery('SELECT COUNT(*) as count FROM items');
       return {
         'stockValue': (stockValue.first['total'] as double?) ?? 0.0,
@@ -412,7 +605,8 @@ class SalesRepository {
   Future<List<Map<String, dynamic>>> getLowStockItems() async {
     final db = await _readyDb();
     try {
-      return await db.rawQuery('SELECT name, stock FROM items ORDER BY stock ASC LIMIT 5');
+      return await db.rawQuery(
+          'SELECT name, stock FROM items ORDER BY stock ASC LIMIT 5');
     } catch (e) {
       return [];
     }
@@ -423,7 +617,6 @@ class SalesRepository {
     try {
       final saleOrders = await db.query('sales_orders');
       final itemSales = <String, Map<String, double>>{};
-
       for (final order in saleOrders) {
         final items = jsonDecode(order['items'] as String? ?? '[]') as List;
         for (final item in items) {
@@ -431,21 +624,21 @@ class SalesRepository {
           final name = itemMap['name'] as String? ?? 'Unknown';
           final qty = (itemMap['qty'] as num?)?.toDouble() ?? 0.0;
           final amount = (itemMap['amount'] as num?)?.toDouble() ?? 0.0;
-
           itemSales.putIfAbsent(name, () => {'quantity': 0, 'revenue': 0});
           itemSales[name]!['quantity'] = itemSales[name]!['quantity']! + qty;
           itemSales[name]!['revenue'] = itemSales[name]!['revenue']! + amount;
         }
       }
-
       final sortedItems = itemSales.entries.toList()
         ..sort((a, b) => b.value['quantity']!.compareTo(a.value['quantity']!));
-
-      return sortedItems.take(5).map((entry) => {
+      return sortedItems
+          .take(5)
+          .map((entry) => {
         'name': entry.key,
         'quantity': entry.value['quantity'],
         'revenue': entry.value['revenue'],
-      }).toList();
+      })
+          .toList();
     } catch (e) {
       return [];
     }
@@ -454,7 +647,8 @@ class SalesRepository {
   Future<Map<String, dynamic>> getOpenPurchaseOrders() async {
     final db = await _readyDb();
     try {
-      final result = await db.rawQuery('SELECT COUNT(*) as count, SUM(totalAmount) as total_amount FROM purchase_orders');
+      final result = await db.rawQuery(
+          'SELECT COUNT(*) as count, SUM(totalAmount) as total_amount FROM purchase_orders');
       return {
         'count': (result.first['count'] as int?) ?? 0,
         'amount': (result.first['total_amount'] as double?) ?? 0.0,
@@ -465,12 +659,14 @@ class SalesRepository {
   }
 
   String _getMonthName(int month) {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
     return months[month - 1];
   }
 
   // ============ CATEGORIES & LOCATIONS ============
-
   Future<List<String>> getCategories() async {
     final db = await _readyDb();
     final maps = await db.query('categories', orderBy: 'name ASC');
