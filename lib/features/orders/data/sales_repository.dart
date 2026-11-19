@@ -442,6 +442,12 @@ class SalesRepository {
 
   Future<void> deleteSaleOrder(String id) async {
     final db = await _readyDb();
+    final oldMaps = await db.query('sales_orders',
+        where: 'id = ?', whereArgs: [id]);
+    if (oldMaps.isNotEmpty) {
+      final oldOrder = SaleOrderModel.fromDb(oldMaps.first);
+      await _reverseInventoryForSale(oldOrder.items);
+    }
     await db.delete('sales_orders', where: 'id = ?', whereArgs: [id]);
   }
 
@@ -492,6 +498,15 @@ class SalesRepository {
     final maps = await db.query('payments',
         where: 'partyId = ?', whereArgs: [partyId], orderBy: 'createdAt DESC');
     return maps.map((map) => PaymentModel.fromDb(map)).toList();
+  }
+
+  Future<PaymentModel?> getPaymentById(String id) async {
+    final db = await _readyDb();
+    final maps = await db.query('payments', where: 'id = ?', whereArgs: [id], limit: 1);
+    if (maps.isNotEmpty) {
+      return PaymentModel.fromDb(maps.first);
+    }
+    return null;
   }
 
   Future<int> getNextReceiptNo() async {
@@ -759,7 +774,16 @@ class SalesRepository {
 
   Future<void> deletePurchaseOrder(String id) async {
     final db = await _readyDb();
+    final oldMaps = await db.query('purchase_orders',
+        where: 'id = ?', whereArgs: [id]);
+    if (oldMaps.isNotEmpty) {
+      final oldOrder = PurchaseOrderModel.fromDb(oldMaps.first);
+      await _reverseInventoryForPurchase(oldOrder.items);
+    }
     await db.delete('purchase_orders', where: 'id = ?', whereArgs: [id]);
+    try {
+      await db.delete('payments', where: 'id = ?', whereArgs: ['${id}_pay']);
+    } catch (_) {}
   }
 
   Future<void> _updateInventoryForPurchase(

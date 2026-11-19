@@ -338,6 +338,7 @@ class _AddPurchaseOrderScreenState extends State<AddPurchaseOrderScreen> {
   bool _isPaidChecked = false;
   bool _rateExclTax = true;
   bool _isOneTimeParty = false;
+  String? _selectedPartyId;
 
   String _paymentType = 'Cash';
   String _stateOfSupply = 'Select State';
@@ -422,6 +423,18 @@ class _AddPurchaseOrderScreenState extends State<AddPurchaseOrderScreen> {
     _paidController.text = '0.00';
     _paidAmount = 0.00;
     _isPaidChecked = false;
+
+    _salesRepository.getPaymentById('${order.id}_pay').then((p) {
+      if (p != null && mounted) {
+        setState(() {
+          _paidAmount = p.receivedAmount;
+          _paidController.text = p.receivedAmount.toStringAsFixed(2);
+          _isPaidChecked = p.receivedAmount > 0;
+          if (p.paymentType.isNotEmpty) _paymentType = p.paymentType;
+          if (p.partyId.isNotEmpty) _selectedPartyId = p.partyId;
+        });
+      }
+    });
 
     try {
       _items.addAll(order.items.map((m) => OrderItemModel.fromJson(m)));
@@ -774,6 +787,7 @@ class _AddPurchaseOrderScreenState extends State<AddPurchaseOrderScreen> {
                           await _salesRepository.insertParty(newParty);
                           _loadSavedParties();
                           setState(() {
+                            _selectedPartyId = newParty.id;
                             _partyNameController.text = newParty.name;
                             _isOneTimeParty = false;
                           });
@@ -927,6 +941,7 @@ class _AddPurchaseOrderScreenState extends State<AddPurchaseOrderScreen> {
 
     if (selected != null) {
       setState(() {
+        _selectedPartyId = selected.id;
         _partyNameController.text = selected.name;
         _isOneTimeParty = false;
       });
@@ -1229,6 +1244,40 @@ class _AddPurchaseOrderScreenState extends State<AddPurchaseOrderScreen> {
       await _salesRepository.updatePurchaseOrder(purchaseOrder);
     } else {
       await _salesRepository.insertPurchaseOrder(purchaseOrder);
+    }
+
+    // Auto-record or update Payment Out for upfront paid amount
+    if (_paidAmount > 0) {
+      try {
+        String pId = _selectedPartyId ?? '';
+        if (pId.isEmpty && _savedParties.isNotEmpty) {
+          final match = _savedParties.where((p) =>
+              p.name.trim().toLowerCase() ==
+              _partyNameController.text.trim().toLowerCase());
+          if (match.isNotEmpty) pId = match.first.id;
+        }
+
+        final nextRecNo = await _salesRepository.getNextReceiptNo();
+        final payment = PaymentModel(
+          id: '${purchaseOrder.id}_pay',
+          receiptNo: nextRecNo,
+          date: purchaseOrder.date,
+          partyId: pId,
+          partyName: purchaseOrder.partyName,
+          partyPhone: '',
+          receivedAmount: _paidAmount,
+          paymentType: _paymentType,
+          isPaymentOut: true,
+          createdAt: DateTime.now(),
+        );
+        await _salesRepository.insertPayment(payment);
+      } catch (e) {
+        debugPrint('Error recording purchase payment out: $e');
+      }
+    } else if (_isEditing) {
+      try {
+        await _salesRepository.deletePayment('${purchaseOrder.id}_pay');
+      } catch (_) {}
     }
 
     HapticFeedback.mediumImpact();

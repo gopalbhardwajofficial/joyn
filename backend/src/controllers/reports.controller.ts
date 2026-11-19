@@ -1144,6 +1144,15 @@ export async function getExecutiveAnalyticsHandler(req: FastifyRequest, reply: F
       [businessId]
     );
 
+    const paymentsSummaryRes = await pool.query(
+      `SELECT 
+         COALESCE(SUM(CASE WHEN is_payment_out = 0 OR is_payment_out IS NULL THEN received_amount ELSE 0 END), 0) as total_payment_in,
+         COALESCE(SUM(CASE WHEN is_payment_out = 1 THEN received_amount ELSE 0 END), 0) as total_payment_out
+       FROM payments
+       WHERE business_id = $1`,
+      [businessId]
+    );
+
     // Build Fast Lookups
     const itemMap = new Map<string, any>();
     const itemNameMap = new Map<string, any>();
@@ -1331,6 +1340,11 @@ export async function getExecutiveAnalyticsHandler(req: FastifyRequest, reply: F
       if (p.balance_type === 'toReceive' && opBal > 0) totalReceivables += opBal;
       else if (p.balance_type === 'toPay' && opBal > 0) totalPayables += opBal;
     }
+
+    const totalPaymentIn = parseFloat(paymentsSummaryRes.rows[0]?.total_payment_in || 0);
+    const totalPaymentOut = parseFloat(paymentsSummaryRes.rows[0]?.total_payment_out || 0);
+    totalReceivables = Math.max(0, totalReceivables - totalPaymentIn);
+    totalPayables = Math.max(0, totalPayables - totalPaymentOut);
 
     // Margins & KPIs
     const invoicesCount = salesRes.rows.length;

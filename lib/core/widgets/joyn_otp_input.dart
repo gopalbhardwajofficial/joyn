@@ -24,12 +24,14 @@ class JoynOtpInput extends StatefulWidget {
 class _JoynOtpInputState extends State<JoynOtpInput> {
   late List<TextEditingController> _controllers;
   late List<FocusNode> _focusNodes;
+  late List<FocusNode> _keyboardFocusNodes;
 
   @override
   void initState() {
     super.initState();
     _controllers = List.generate(widget.length, (_) => TextEditingController());
     _focusNodes = List.generate(widget.length, (_) => FocusNode());
+    _keyboardFocusNodes = List.generate(widget.length, (_) => FocusNode());
     _applyValue(widget.value);
   }
 
@@ -59,6 +61,9 @@ class _JoynOtpInputState extends State<JoynOtpInput> {
       controller.dispose();
     }
     for (var node in _focusNodes) {
+      node.dispose();
+    }
+    for (var node in _keyboardFocusNodes) {
       node.dispose();
     }
     super.dispose();
@@ -111,7 +116,7 @@ class _JoynOtpInputState extends State<JoynOtpInput> {
             width: 64,
             height: 64,
             child: KeyboardListener(
-              focusNode: FocusNode(),
+              focusNode: _keyboardFocusNodes[index],
               onKeyEvent: (event) {
                 if (event is KeyDownEvent &&
                     event.logicalKey == LogicalKeyboardKey.backspace &&

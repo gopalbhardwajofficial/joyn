@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../../../core/database/database_helper.dart';
 import '../../../core/services/api_service.dart';
+import '../../../features/orders/data/sales_repository.dart';
 import '../models/kpi_analytics_models.dart';
 
 class KpiAnalyticsRepository {
@@ -278,7 +279,6 @@ class KpiAnalyticsRepository {
       '60+ Days': 0.0,
     };
 
-    double totalReceivablesAllTime = 0.0;
     double cashInHand = 0.0;
     double bankBalance = 0.0;
     double totalGrossProfit = 0.0;
@@ -297,8 +297,7 @@ class KpiAnalyticsRepository {
       final paymentMode = (row['paymentMode'] as String? ?? 'Cash').trim();
       final paymentType = (row['paymentType'] as String? ?? 'Cash').trim();
 
-      // All-time receivables & cash tracking
-      totalReceivablesAllTime += due;
+      // Cash tracking
       if (paymentMode.toLowerCase() == 'cash' || paymentType.toLowerCase() == 'cash') {
         cashInHand += received;
       } else if (paymentType.toLowerCase().contains('upi') ||
@@ -423,23 +422,11 @@ class KpiAnalyticsRepository {
       }
     }
 
-    // Include Opening Balances in Receivables
-    for (final p in partyRows) {
-      final balType = (p['balanceType'] ?? '').toString();
-      final opBal = (p['openingBalance'] as num?)?.toDouble() ?? 0.0;
-      if (balType == 'toReceive' && opBal > 0) {
-        totalReceivablesAllTime += opBal;
-      }
-    }
-
-    // 6. Aggregate Purchases
-    double totalPayablesAllTime = 0.0;
+    // 6. Aggregate Purchases for Date Range
     final supplierSalesMap = <String, _PartyAgg>{};
 
     for (final pRow in purchaseRows) {
       final total = (pRow['totalAmount'] as num?)?.toDouble() ?? 0.0;
-      totalPayablesAllTime += total;
-
       final pDateStr = pRow['date'] as String?;
       final pCreatedAt = pRow['createdAt'] as String?;
       final pDate = parseAnyDate(pDateStr, DateTime.tryParse(pCreatedAt ?? ''));
@@ -464,14 +451,23 @@ class KpiAnalyticsRepository {
       }
     }
 
-    // Include Opening Balances in Payables
-    for (final p in partyRows) {
-      final balType = (p['balanceType'] ?? '').toString();
-      final opBal = (p['openingBalance'] as num?)?.toDouble() ?? 0.0;
-      if (balType == 'toPay' && opBal > 0) {
-        totalPayablesAllTime += opBal;
+    // Exact ledger-accurate party receivables and payables matching Parties List cards
+    double totalReceivablesAllTime = 0.0;
+    double totalPayablesAllTime = 0.0;
+    try {
+      final allPartyBalances = await SalesRepository().getAllPartyBalances();
+      for (final b in allPartyBalances.values) {
+        final bal = (b['balance'] as num?)?.toDouble() ?? 0.0;
+        final isRec = b['isReceivable'] as bool? ?? true;
+        if (bal > 0) {
+          if (isRec) {
+            totalReceivablesAllTime += bal;
+          } else {
+            totalPayablesAllTime += bal;
+          }
+        }
       }
-    }
+    } catch (_) {}
 
     // 7. Aggregate Expenses in Range
     double totalExpenses = 0.0;
