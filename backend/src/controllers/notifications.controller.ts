@@ -37,30 +37,39 @@ export async function registerDeviceTokenHandler(req: FastifyRequest, reply: Fas
 // 2. List In-App Notifications for Active Business
 export async function listNotificationsHandler(req: FastifyRequest, reply: FastifyReply) {
   try {
-    const activeBusinessId = (req as any).businessAccess?.businessId || (req.headers['x-business-id'] as string) || (req.query as any)?.businessId;
+    const user = (req as any).user;
+    const pool = getDbPool();
+    let activeBusinessId = (req as any).businessAccess?.businessId || (req.headers['x-business-id'] as string) || (req.query as any)?.businessId;
     const { limit = 50, type } = (req.query as any) || {};
 
-    if (!activeBusinessId) {
-      return reply.status(400).send({ success: false, message: 'x-business-id header is required.' });
+    if (!activeBusinessId && user?.userId) {
+      const bizRes = await pool.query(
+        'SELECT id FROM business_profile WHERE owner_id = $1 ORDER BY created_at ASC LIMIT 1',
+        [user.userId]
+      );
+      if (bizRes.rows.length > 0) activeBusinessId = bizRes.rows[0].id;
     }
 
-    const pool = getDbPool();
+    if (!activeBusinessId && !user?.userId) {
+      return reply.send({ success: true, unreadCount: 0, notifications: [] });
+    }
 
     // Query notifications
     let query = `
       SELECT * FROM notifications 
-      WHERE business_id = $1 
-      ${type ? 'AND type = $2' : ''}
+      WHERE (business_id = $1 OR user_id = $2)
+      ${type ? 'AND type = $3' : ''}
       ORDER BY created_at DESC 
       LIMIT ${parseInt(limit) || 50}
     `;
-    const params = type ? [activeBusinessId, type] : [activeBusinessId];
+    const params = type ? [activeBusinessId || null, user?.userId || null, type] : [activeBusinessId || null, user?.userId || null];
     const res = await pool.query(query, params);
 
     // Unread count
     const unreadRes = await pool.query(
-      `SELECT COUNT(*)::int as unread_count FROM notifications WHERE business_id = $1 AND is_read = false`,
-      [activeBusinessId]
+      `SELECT COUNT(*)::int as unread_count FROM notifications 
+       WHERE (business_id = $1 OR user_id = $2) AND is_read = false`,
+      [activeBusinessId || null, user?.userId || null]
     );
     const unreadCount = unreadRes.rows[0]?.unread_count || 0;
 
@@ -123,10 +132,10 @@ export async function markAllNotificationsReadHandler(req: FastifyRequest, reply
       if (bizRes.rows.length > 0) activeBusinessId = bizRes.rows[0].id;
     }
 
-    if (activeBusinessId) {
+    if (activeBusinessId || user?.userId) {
       await pool.query(
-        `UPDATE notifications SET is_read = true WHERE business_id = $1 AND is_read = false`,
-        [activeBusinessId]
+        `UPDATE notifications SET is_read = true WHERE (business_id = $1 OR user_id = $2) AND is_read = false`,
+        [activeBusinessId || null, user?.userId || null]
       );
     }
     if (user?.userId) {

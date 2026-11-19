@@ -235,16 +235,8 @@ export async function createSaleOrderHandler(req: FastifyRequest, reply: Fastify
       }
     }
 
-    // 4. If linked to customer party, update customer balance
-    if (validPartyId && !isOneTimeCustomer) {
-      const balanceDifference = parsedTotal - parsedReceived;
-      if (balanceDifference !== 0) {
-        await client.query(
-          `UPDATE parties SET opening_balance = opening_balance + $1 WHERE id = $2 AND business_id = $3`,
-          [balanceDifference, validPartyId, activeBusinessId]
-        );
-      }
-    }
+    // 4. Ledger integrity: party opening_balance represents initial balance and is preserved without mutation.
+    // Dynamic net balance is computed from opening_balance + sales - purchases - payments.
 
     // 5. Audit Log Entry
     let logMemberId = null;

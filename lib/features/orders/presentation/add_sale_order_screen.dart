@@ -14,6 +14,7 @@ import '../../Inventory/presentation/add_new_party_screen.dart';
 import '../../Inventory/presentation/scan_code_screen.dart';
 import '../../business_profile/data/business_profile_repository.dart';
 import '../../../core/services/local_storage_service.dart';
+import '../../../core/services/api_service.dart';
 
 
 // ==================== Premium Helpers ====================
@@ -664,6 +665,44 @@ class _AddSaleOrderScreenState extends State<AddSaleOrderScreen> {
         break;
       }
     }
+
+    if (foundItem == null) {
+      try {
+        final allDbItems = await _salesRepository.getItems();
+        for (final item in allDbItems) {
+          if (item.barcode.isNotEmpty && item.barcode == barcode) {
+            foundItem = item;
+            break;
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (foundItem == null) {
+      try {
+        final cloudItem = await ApiService.searchBarcode(barcode);
+        if (cloudItem != null) {
+          foundItem = InventoryItemModel(
+            id: cloudItem['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
+            name: cloudItem['name']?.toString() ?? '',
+            barcode: cloudItem['barcode']?.toString() ?? barcode,
+            sellingPrice: (cloudItem['sale_price'] as num?)?.toDouble() ??
+                (cloudItem['sellingPrice'] as num?)?.toDouble() ??
+                0.0,
+            purchasePrice: (cloudItem['purchase_price'] as num?)?.toDouble() ??
+                (cloudItem['purchasePrice'] as num?)?.toDouble() ??
+                0.0,
+            stock: (cloudItem['current_stock'] as num?)?.toInt() ??
+                (cloudItem['stock'] as num?)?.toInt() ??
+                0,
+            unit: cloudItem['unit']?.toString() ?? 'Pcs',
+            category: cloudItem['category']?.toString() ?? '',
+            createdAt: DateTime.now(),
+          );
+        }
+      } catch (_) {}
+    }
+
     if (foundItem != null) {
       final newItem = OrderItemModel(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -682,6 +721,30 @@ class _AddSaleOrderScreenState extends State<AddSaleOrderScreen> {
         _items.add(newItem);
         _recalcTotal();
       });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Added "${foundItem.name}" to order'),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: JoynColors.success,
+            duration: const Duration(seconds: 2),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('No item found with barcode "$barcode"'),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: JoynColors.error,
+            duration: const Duration(seconds: 3),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      }
     }
   }
 
@@ -2198,41 +2261,81 @@ class _AddSaleOrderScreenState extends State<AddSaleOrderScreen> {
 
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 0, 14, 16),
-            child: _PressScale(
-              onTap: () => _addItem(),
-              child: Container(
-                height: 52,
-                decoration: BoxDecoration(
-                  color: _P.infoSoft,
-                  borderRadius: BorderRadius.circular(_P.rMd),
-                  border: Border.all(
-                      color: JoynColors.primary.withValues(alpha: 0.2),
-                      width: 1.5),
-                ),
-                child: Center(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          gradient: _P.primaryGrad,
-                          shape: BoxShape.circle,
-                          boxShadow: _P.glow(JoynColors.primary, 0.35),
-                        ),
-                        child: const Icon(Icons.add,
-                            color: Colors.white, size: 16),
+            child: Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: _PressScale(
+                    onTap: () => _addItem(),
+                    child: Container(
+                      height: 52,
+                      decoration: BoxDecoration(
+                        color: _P.infoSoft,
+                        borderRadius: BorderRadius.circular(_P.rMd),
+                        border: Border.all(
+                            color: JoynColors.primary.withValues(alpha: 0.2),
+                            width: 1.5),
                       ),
-                      const SizedBox(width: 10),
-                      Text('Add Items',
-                          style: JoynTypography.bodyMedium.copyWith(
-                              fontSize: 15,
-                              color: JoynColors.primary,
-                              fontWeight: FontWeight.w700)),
-                    ],
+                      child: Center(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                gradient: _P.primaryGrad,
+                                shape: BoxShape.circle,
+                                boxShadow: _P.glow(JoynColors.primary, 0.35),
+                              ),
+                              child: const Icon(Icons.add,
+                                  color: Colors.white, size: 16),
+                            ),
+                            const SizedBox(width: 8),
+                            Text('Add Items',
+                                style: JoynTypography.bodyMedium.copyWith(
+                                    fontSize: 14.5,
+                                    color: JoynColors.primary,
+                                    fontWeight: FontWeight.w700)),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-              ),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 2,
+                  child: _PressScale(
+                    onTap: _scanBarcodeAndAddItem,
+                    child: Container(
+                      height: 52,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(_P.rMd),
+                        border: Border.all(
+                            color: JoynColors.primary.withValues(alpha: 0.25),
+                            width: 1.5),
+                        boxShadow: _P.soft,
+                      ),
+                      child: Center(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.qr_code_scanner_rounded,
+                                color: JoynColors.primary, size: 18),
+                            const SizedBox(width: 6),
+                            Text('Scan',
+                                style: JoynTypography.bodyMedium.copyWith(
+                                    fontSize: 14,
+                                    color: JoynColors.primary,
+                                    fontWeight: FontWeight.w700)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],

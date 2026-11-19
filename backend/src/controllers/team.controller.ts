@@ -1,5 +1,6 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { getDbPool } from '../db/connection.js';
+import { send2FactorOtp } from '../services/sms.service.js';
 
 export async function getTeamMembersHandler(req: FastifyRequest, reply: FastifyReply) {
   try {
@@ -187,16 +188,37 @@ export async function createTeamMemberHandler(req: FastifyRequest, reply: Fastif
       m = insertRes.rows[0];
     }
 
-    // Log activity
+    // Log admin activity (tagged as team_management so it does not pollute business performance metrics)
     await pool.query(
       `INSERT INTO activity_logs (business_id, user_id, member_id, member_name, activity_type, title, subtitle)
-       VALUES ($1, $2, $3, $4, 'custAddedModified', $5, $6)`,
+       VALUES ($1, $2, $3, $4, 'team_management', $5, $6)`,
       [activeBusinessId, user?.userId || null, m.id, m.name, 'Team Member Joined', `${m.name} assigned as ${finalRoleName}`]
     );
+
+    // Fetch business name for invitation message
+    let bizName = 'JOYN Business';
+    try {
+      const bRes = await pool.query('SELECT business_name FROM business_profile WHERE id = $1', [activeBusinessId]);
+      if (bRes.rows.length > 0 && bRes.rows[0].business_name) {
+        bizName = bRes.rows[0].business_name;
+      }
+    } catch (_) {}
+
+    const inviteMessage = `${bizName} has invited you to join the app as a team member for the ${finalRoleName} role. Please accept and download the app here: https://api.joynonline.in/download`;
+
+    // Trigger SMS to Indian mobile number
+    try {
+      if (cleanPhone && cleanPhone.length === 10) {
+        send2FactorOtp(cleanPhone).catch((err) => {
+          console.warn('Invite SMS dispatch warning:', err?.message || err);
+        });
+      }
+    } catch (_) {}
 
     return reply.status(201).send({
       success: true,
       message: 'Team member added successfully.',
+      inviteMessage,
       teamMember: {
         id: m.id,
         name: m.name,
@@ -489,9 +511,11 @@ export async function getActivityLogsHandler(req: FastifyRequest, reply: Fastify
       }
 
       // Performance records of a member should only include real business actions (sales, purchases, items, etc.),
-      // NOT administrative setup events (e.g. "Team Member Joined", "Team Member Updated").
-      query += ` AND (title IS NULL OR title NOT IN ('Team Member Joined', 'Team Member Updated', 'Team Member Deleted'))`;
+      // NOT administrative setup events (e.g. "Team Member Joined", "Team Member Updated", "Member Activated").
+      query += ` AND (title IS NULL OR title NOT IN ('Team Member Joined', 'Team Member Updated', 'Team Member Deleted', 'Member Activated', 'Member Deactivated', 'Role Created', 'Role Updated'))`;
+      query += ` AND (activity_type IS NULL OR activity_type NOT IN ('team_management', 'profile_update', 'admin', 'auth'))`;
       query += ` AND (details IS NULL OR details NOT ILIKE '%assigned as%')`;
+      query += ` AND (subtitle IS NULL OR subtitle NOT ILIKE '%assigned as%')`;
     }
 
     // Date period filtering

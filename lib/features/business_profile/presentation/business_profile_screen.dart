@@ -845,12 +845,22 @@ class _BusinessProfileScreenState
       await _persistRoles();
       if (existing != null) {
         await _teamMemberRepository.updateTeamMember(member);
+        if (mounted) {
+          context.push('/team-member-activity-log', extra: member);
+        }
       } else {
         await _teamMemberRepository.insertTeamMember(member);
-      }
 
-      if (existing != null && mounted) {
-        context.push('/team-member-activity-log', extra: member);
+        // Trigger WhatsApp & SMS invitation to the new team member
+        final bizName = _businessNameController.text.trim().isNotEmpty && _businessNameController.text.trim() != 'My Business'
+            ? _businessNameController.text.trim()
+            : 'JOYN';
+        final role = member.roleName.isNotEmpty ? member.roleName : 'Team Member';
+        final inviteMessage = '$bizName has invited you to join the app as a team member for the $role role. Please accept and download the app here: https://api.joynonline.in/download';
+
+        if (mounted) {
+          Share.share(inviteMessage, subject: 'Invitation to join $bizName');
+        }
       }
     }
   }

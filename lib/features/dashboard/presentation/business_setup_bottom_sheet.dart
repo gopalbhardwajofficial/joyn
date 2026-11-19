@@ -181,8 +181,9 @@ class _BusinessSetupBottomSheetState
             ],
           ],
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 8),
         Container(
+          constraints: BoxConstraints(minHeight: maxLines > 1 ? 80 : 54),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(16),
@@ -203,15 +204,15 @@ class _BusinessSetupBottomSheetState
                 Padding(
                   padding: EdgeInsets.only(left: 14, top: maxLines > 1 ? 14 : 0),
                   child: Container(
-                    padding: const EdgeInsets.all(6),
+                    padding: const EdgeInsets.all(7),
                     decoration: BoxDecoration(
                       color: JoynColors.primary.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: Icon(icon, size: 16, color: JoynColors.primary),
+                    child: Icon(icon, size: 18, color: JoynColors.primary),
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 12),
               ],
               Expanded(
                 child: TextField(
@@ -220,7 +221,7 @@ class _BusinessSetupBottomSheetState
                   keyboardType: keyboardType,
                   maxLines: maxLines,
                   style: JoynTypography.bodyLarge.copyWith(
-                    fontSize: 15,
+                    fontSize: 15.5,
                     fontWeight: FontWeight.w600,
                     color: JoynColors.primary,
                   ),
@@ -232,13 +233,13 @@ class _BusinessSetupBottomSheetState
                       fontWeight: FontWeight.w500,
                     ),
                     contentPadding: EdgeInsets.symmetric(
-                      horizontal: icon != null ? 0 : 14,
-                      vertical: maxLines > 1 ? 14 : 0,
+                      horizontal: icon != null ? 0 : 16,
+                      vertical: 14,
                     ),
                     border: InputBorder.none,
                     focusedBorder: InputBorder.none,
                     enabledBorder: InputBorder.none,
-                    isDense: true,
+                    isDense: false,
                   ),
                   onSubmitted: (_) {
                     if (controller == _nameController) {

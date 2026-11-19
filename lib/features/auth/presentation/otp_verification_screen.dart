@@ -27,8 +27,13 @@ class _OtpVerificationScreenState extends ConsumerState<OtpVerificationScreen>
     _initAutoFill();
   }
 
-  void _initAutoFill() {
-    listenForCode();
+  void _initAutoFill() async {
+    try {
+      listenForCode();
+      await SmsAutoFill().listenForCode();
+    } catch (e) {
+      debugPrint('SMS AutoFill listen error: $e');
+    }
   }
 
   @override
@@ -47,7 +52,10 @@ class _OtpVerificationScreenState extends ConsumerState<OtpVerificationScreen>
 
   @override
   void dispose() {
-    cancel();
+    try {
+      cancel();
+      SmsAutoFill().unregisterListener();
+    } catch (_) {}
     super.dispose();
   }
 

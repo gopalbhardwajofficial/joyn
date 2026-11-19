@@ -477,8 +477,18 @@ class SalesRepository {
   }
 
   // ============ PAYMENTS ============
-  Future<List<PaymentModel>> getPaymentsForParty(String partyId) async {
+  Future<List<PaymentModel>> getPaymentsForParty(String partyId, [String? partyName]) async {
     final db = await _readyDb();
+    final nameKey = (partyName ?? '').trim().toLowerCase();
+    if (nameKey.isNotEmpty) {
+      final maps = await db.query(
+        'payments',
+        where: 'partyId = ? OR (COALESCE(partyId, "") = "" AND TRIM(LOWER(partyName)) = ?)',
+        whereArgs: [partyId, nameKey],
+        orderBy: 'createdAt DESC',
+      );
+      return maps.map((map) => PaymentModel.fromDb(map)).toList();
+    }
     final maps = await db.query('payments',
         where: 'partyId = ?', whereArgs: [partyId], orderBy: 'createdAt DESC');
     return maps.map((map) => PaymentModel.fromDb(map)).toList();
@@ -543,31 +553,65 @@ class SalesRepository {
   }
 
   Future<Map<String, dynamic>> getPartyBalance(String partyId) async {
-    // Pehle party name nikaalo
+    final db = await _readyDb();
     String partyName = '';
+    double openingBalance = 0;
+    String balanceType = 'toReceive';
+
     try {
-      final db = await _readyDb();
       final rows = await db.query('parties',
           where: 'id = ?', whereArgs: [partyId], limit: 1);
-      if (rows.isNotEmpty) partyName = (rows.first['name'] as String? ?? '');
+      if (rows.isNotEmpty) {
+        final r = rows.first;
+        partyName = (r['name'] as String? ?? '');
+        openingBalance = (r['openingBalance'] as num?)?.toDouble() ?? 0;
+        balanceType = (r['balanceType'] as String? ?? 'toReceive');
+      }
     } catch (_) {}
 
+    // Net Receivable convention:
+    // +ve = Party owes us / Receivable ("Get" / Green)
+    // -ve = We owe party / Payable ("Give" / Red)
+    double netReceivable = 0;
+
+    // 1. Opening Balance
+    if (balanceType.toLowerCase() == 'tocharge' || balanceType.toLowerCase() == 'toreceive') {
+      netReceivable += openingBalance;
+    } else if (balanceType.toLowerCase() == 'topay') {
+      netReceivable -= openingBalance;
+    }
+
+    // 2. Sales Orders (Unpaid amount is receivable from party)
     final sales = await getSaleOrdersForParty(partyId, partyName);
-    final payments = await getPaymentsForParty(partyId);
-
-    double dueFromSales = 0;
     for (final s in sales) {
-      dueFromSales += s.balanceDue;
-    }
-    double totalPayments = 0;
-    for (final p in payments) {
-      totalPayments += p.isPaymentOut ? -p.receivedAmount : p.receivedAmount;
+      netReceivable += s.balanceDue; // (totalAmount - receivedAmount)
     }
 
-    final net = dueFromSales - totalPayments;
+    // 3. Purchase Orders (Unpaid amount is payable to party, reduces net receivable)
+    final purchases = await getPurchaseOrdersForParty(partyId, partyName);
+    for (final p in purchases) {
+      netReceivable -= p.totalAmount;
+    }
+
+    // 4. Standalone Payments
+    final payments = await getPaymentsForParty(partyId, partyName);
+    for (final p in payments) {
+      if (p.isPaymentOut) {
+        // Payment Out: We paid money to the party. Reduces our payable (increases net receivable)
+        netReceivable += p.receivedAmount;
+      } else {
+        // Payment In: Party paid money to us. Reduces receivable
+        netReceivable -= p.receivedAmount;
+      }
+    }
+
+    final double balance = netReceivable.abs();
+    final bool isReceivable = netReceivable >= 0;
+
     return {
-      'balance': net.abs(),
-      'isReceivable': net >= 0,
+      'balance': balance,
+      'isReceivable': isReceivable,
+      'netReceivable': netReceivable,
     };
   }
 

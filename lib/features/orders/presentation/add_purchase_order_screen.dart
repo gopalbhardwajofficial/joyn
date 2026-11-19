@@ -4,6 +4,10 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:joyn/features/Invoice/presentation/InvoicePreviewScreen.dart';
+import '../../business_profile/data/business_profile_repository.dart';
+import '../../../core/services/local_storage_service.dart';
+import '../../../core/services/api_service.dart';
 import '../../../core/theme/joyn_colors.dart';
 import '../../../core/theme/joyn_typography.dart';
 import '../models/sales_models.dart';
@@ -567,39 +571,6 @@ class _AddPurchaseOrderScreenState extends State<AddPurchaseOrderScreen> {
         }
         _recalcTotal();
       });
-      await _persistSingleItemToMaster(result);
-    }
-  }
-
-  Future<void> _persistSingleItemToMaster(OrderItemModel item) async {
-    final name = item.itemName.trim();
-    if (name.isEmpty) return;
-
-    final exists = _savedItems.any(
-          (s) => s.name.trim().toLowerCase() == name.toLowerCase(),
-    );
-    if (exists) return;
-
-    try {
-      final newInv = InventoryItemModel(
-        id: '${DateTime.now().millisecondsSinceEpoch}_${item.id}',
-        name: name,
-        category: item.category,
-        unit: item.unit,
-        purchasePrice: item.unitPrice,
-        sellingPrice: item.unitPrice,
-        stock: item.qty,
-        barcode: '',
-        createdAt: DateTime.now(),
-      );
-      await _salesRepository.insertItem(newInv);
-
-      if (!mounted) return;
-      setState(() {
-        _savedItems = [..._savedItems, newInv];
-      });
-    } catch (e) {
-      debugPrint('Error saving item to master "$name": $e');
     }
   }
 
@@ -629,6 +600,44 @@ class _AddPurchaseOrderScreenState extends State<AddPurchaseOrderScreen> {
         break;
       }
     }
+
+    if (foundItem == null) {
+      try {
+        final allDbItems = await _salesRepository.getItems();
+        for (final item in allDbItems) {
+          if (item.barcode.isNotEmpty && item.barcode == barcode) {
+            foundItem = item;
+            break;
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (foundItem == null) {
+      try {
+        final cloudItem = await ApiService.searchBarcode(barcode);
+        if (cloudItem != null) {
+          foundItem = InventoryItemModel(
+            id: cloudItem['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
+            name: cloudItem['name']?.toString() ?? '',
+            barcode: cloudItem['barcode']?.toString() ?? barcode,
+            sellingPrice: (cloudItem['sale_price'] as num?)?.toDouble() ??
+                (cloudItem['sellingPrice'] as num?)?.toDouble() ??
+                0.0,
+            purchasePrice: (cloudItem['purchase_price'] as num?)?.toDouble() ??
+                (cloudItem['purchasePrice'] as num?)?.toDouble() ??
+                0.0,
+            stock: (cloudItem['current_stock'] as num?)?.toInt() ??
+                (cloudItem['stock'] as num?)?.toInt() ??
+                0,
+            unit: cloudItem['unit']?.toString() ?? 'Pcs',
+            category: cloudItem['category']?.toString() ?? '',
+            createdAt: DateTime.now(),
+          );
+        }
+      } catch (_) {}
+    }
+
     if (foundItem != null) {
       final newItem = OrderItemModel(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -639,11 +648,38 @@ class _AddPurchaseOrderScreenState extends State<AddPurchaseOrderScreen> {
             : foundItem.sellingPrice,
         qty: 1,
         unit: foundItem.unit,
+        hsnSac: foundItem.hsnSac,
+        taxRate: foundItem.taxRatePercent,
+        taxInclusive: foundItem.purchasePriceTaxMode == PriceTaxMode.withTax,
       );
       setState(() {
         _items.add(newItem);
         _recalcTotal();
       });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Added "${foundItem.name}" to purchase order'),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: JoynColors.success,
+            duration: const Duration(seconds: 2),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('No item found with barcode "$barcode"'),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: JoynColors.error,
+            duration: const Duration(seconds: 3),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      }
     }
   }
 
@@ -1096,10 +1132,58 @@ class _AddPurchaseOrderScreenState extends State<AddPurchaseOrderScreen> {
     if (result != null) setState(() => _selectedTerms = result);
   }
 
-  Future<void> _persistItemsToMaster() async {
-    for (final item in _items) {
-      await _persistSingleItemToMaster(item);
-    }
+  Future<void> _openPurchaseOrderPreview(PurchaseOrderModel order,
+      {bool popAfterClose = false}) async {
+    final profile = await BusinessProfileRepository().getBusinessProfile();
+
+    final bizAddr = [
+      if (profile?.address.isNotEmpty == true) profile!.address,
+      if (profile?.city.isNotEmpty == true) profile!.city,
+      if (profile?.state.isNotEmpty == true) profile!.state,
+      if (profile?.pincode.isNotEmpty == true) profile!.pincode,
+    ].join(', ');
+
+    String resolvedBusinessName = (profile?.businessName.isNotEmpty == true && profile!.businessName != 'My Business')
+        ? profile!.businessName
+        : (LocalStorageService().businessName.isNotEmpty
+            ? LocalStorageService().businessName
+            : 'JOYN Enterprise');
+
+    if (!mounted) return;
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => InvoicePreviewScreen(
+          data: InvoicePreviewData(
+            invoiceNo: order.orderNo,
+            date: order.date,
+            dueDate: order.dueDate,
+            customerName: order.partyName.isEmpty ? '—' : order.partyName,
+            customerPhone: '',
+            items: List<OrderItemModel>.from(_items),
+            totalAmount: order.totalAmount,
+            receivedAmount: 0,
+            businessName: resolvedBusinessName,
+            businessPhone: profile?.phone1 ?? LocalStorageService().phoneNumber,
+            businessEmail: profile?.email ?? LocalStorageService().email,
+            businessAddress: bizAddr,
+            businessGstin: profile?.gstNumber ?? '',
+            termsAndConditions: _selectedTerms ?? '',
+            logoPath: profile?.logoPath,
+            logoUrl: profile?.logoUrl,
+            bankName: profile?.bankName ?? '',
+            accountNumber: profile?.accountNumber ?? '',
+            ifscCode: profile?.ifscCode ?? '',
+            upiId: profile?.upiId ?? '',
+            title: 'Purchase Order',
+          ),
+        ),
+      ),
+    ).then((_) {
+      if (popAfterClose && mounted) {
+        Navigator.of(context).pop(order);
+      }
+    });
   }
 
   Future<void> _save({bool andNew = false}) async {
@@ -1147,8 +1231,6 @@ class _AddPurchaseOrderScreenState extends State<AddPurchaseOrderScreen> {
       await _salesRepository.insertPurchaseOrder(purchaseOrder);
     }
 
-    await _persistItemsToMaster();
-
     HapticFeedback.mediumImpact();
     if (!mounted) return;
 
@@ -1176,8 +1258,9 @@ class _AddPurchaseOrderScreenState extends State<AddPurchaseOrderScreen> {
         _pickedImage = null;
         _pickedDocument = null;
       });
+      _openPurchaseOrderPreview(purchaseOrder, popAfterClose: false);
     } else {
-      Navigator.of(context).pop(purchaseOrder);
+      _openPurchaseOrderPreview(purchaseOrder, popAfterClose: true);
     }
   }
 
@@ -2126,41 +2209,81 @@ class _AddPurchaseOrderScreenState extends State<AddPurchaseOrderScreen> {
 
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 0, 14, 16),
-            child: _PressScale(
-              onTap: () => _addItem(),
-              child: Container(
-                height: 52,
-                decoration: BoxDecoration(
-                  color: _P.infoSoft,
-                  borderRadius: BorderRadius.circular(_P.rMd),
-                  border: Border.all(
-                      color: JoynColors.primary.withValues(alpha: 0.2),
-                      width: 1.5),
-                ),
-                child: Center(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          gradient: _P.primaryGrad,
-                          shape: BoxShape.circle,
-                          boxShadow: _P.glow(JoynColors.primary, 0.35),
-                        ),
-                        child: const Icon(Icons.add,
-                            color: Colors.white, size: 16),
+            child: Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: _PressScale(
+                    onTap: () => _addItem(),
+                    child: Container(
+                      height: 52,
+                      decoration: BoxDecoration(
+                        color: _P.infoSoft,
+                        borderRadius: BorderRadius.circular(_P.rMd),
+                        border: Border.all(
+                            color: JoynColors.primary.withValues(alpha: 0.2),
+                            width: 1.5),
                       ),
-                      const SizedBox(width: 10),
-                      Text('Add Items',
-                          style: JoynTypography.bodyMedium.copyWith(
-                              fontSize: 15,
-                              color: JoynColors.primary,
-                              fontWeight: FontWeight.w700)),
-                    ],
+                      child: Center(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                gradient: _P.primaryGrad,
+                                shape: BoxShape.circle,
+                                boxShadow: _P.glow(JoynColors.primary, 0.35),
+                              ),
+                              child: const Icon(Icons.add,
+                                  color: Colors.white, size: 16),
+                            ),
+                            const SizedBox(width: 8),
+                            Text('Add Items',
+                                style: JoynTypography.bodyMedium.copyWith(
+                                    fontSize: 14.5,
+                                    color: JoynColors.primary,
+                                    fontWeight: FontWeight.w700)),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-              ),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 2,
+                  child: _PressScale(
+                    onTap: _scanBarcodeAndAddItem,
+                    child: Container(
+                      height: 52,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(_P.rMd),
+                        border: Border.all(
+                            color: JoynColors.primary.withValues(alpha: 0.25),
+                            width: 1.5),
+                        boxShadow: _P.soft,
+                      ),
+                      child: Center(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.qr_code_scanner_rounded,
+                                color: JoynColors.primary, size: 18),
+                            const SizedBox(width: 6),
+                            Text('Scan',
+                                style: JoynTypography.bodyMedium.copyWith(
+                                    fontSize: 14,
+                                    color: JoynColors.primary,
+                                    fontWeight: FontWeight.w700)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],

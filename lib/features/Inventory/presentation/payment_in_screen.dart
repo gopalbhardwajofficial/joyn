@@ -12,6 +12,9 @@ import '../../../core/theme/joyn_colors.dart';
 import '../../../core/theme/joyn_typography.dart';
 import '../../orders/models/sales_models.dart';
 import '../../orders/data/sales_repository.dart';
+import '../../Invoice/presentation/InvoicePreviewScreen.dart';
+import '../../business_profile/data/business_profile_repository.dart';
+import '../../../core/services/local_storage_service.dart';
 
 class PaymentInScreen extends StatefulWidget {
   const PaymentInScreen({super.key, required this.party, this.isPaymentOut});
@@ -82,6 +85,71 @@ class _PaymentInScreenState extends State<PaymentInScreen> {
     }
   }
 
+  Future<void> _openPaymentReceiptPreview(PaymentModel payment,
+      {bool popAfterClose = false}) async {
+    final profile = await BusinessProfileRepository().getBusinessProfile();
+
+    final bizAddr = [
+      if (profile?.address.isNotEmpty == true) profile!.address,
+      if (profile?.city.isNotEmpty == true) profile!.city,
+      if (profile?.state.isNotEmpty == true) profile!.state,
+      if (profile?.pincode.isNotEmpty == true) profile!.pincode,
+    ].join(', ');
+
+    String resolvedBusinessName = (profile?.businessName.isNotEmpty == true && profile!.businessName != 'My Business')
+        ? profile!.businessName
+        : (LocalStorageService().businessName.isNotEmpty
+            ? LocalStorageService().businessName
+            : 'JOYN Enterprise');
+
+    if (!mounted) return;
+
+    final voucherTitle = payment.isPaymentOut ? 'Payment Out Voucher' : 'Payment Receipt';
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => InvoicePreviewScreen(
+          data: InvoicePreviewData(
+            invoiceNo: payment.receiptNo,
+            date: payment.date,
+            customerName: payment.partyName.isEmpty ? widget.party.name : payment.partyName,
+            customerPhone: payment.partyPhone.isEmpty ? widget.party.contactNumber : payment.partyPhone,
+            items: [
+              OrderItemModel(
+                id: '1',
+                itemName: payment.isPaymentOut
+                    ? 'Payment Made to ${widget.party.name}'
+                    : 'Payment Received from ${widget.party.name}',
+                unitPrice: payment.receivedAmount,
+                qty: 1,
+                unit: 'Payment',
+              ),
+            ],
+            totalAmount: payment.receivedAmount,
+            receivedAmount: payment.receivedAmount,
+            businessName: resolvedBusinessName,
+            businessPhone: profile?.phone1 ?? LocalStorageService().phoneNumber,
+            businessEmail: profile?.email ?? LocalStorageService().email,
+            businessAddress: bizAddr,
+            businessGstin: profile?.gstNumber ?? '',
+            paymentMode: payment.paymentType,
+            logoPath: profile?.logoPath,
+            logoUrl: profile?.logoUrl,
+            bankName: profile?.bankName ?? '',
+            accountNumber: profile?.accountNumber ?? '',
+            ifscCode: profile?.ifscCode ?? '',
+            upiId: profile?.upiId ?? '',
+            title: voucherTitle,
+          ),
+        ),
+      ),
+    ).then((_) {
+      if (popAfterClose && mounted) {
+        Navigator.of(context).pop(true);
+      }
+    });
+  }
+
   Future<void> _save({bool andNew = false}) async {
     if (_receivedAmount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter a received amount')));
@@ -115,10 +183,11 @@ class _PaymentInScreenState extends State<PaymentInScreen> {
     if (andNew) {
       _receivedController.clear();
       await _load();
+      _openPaymentReceiptPreview(payment, popAfterClose: false);
       return;
     }
 
-    Navigator.of(context).pop(true);
+    _openPaymentReceiptPreview(payment, popAfterClose: true);
   }
 
   @override

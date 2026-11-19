@@ -103,53 +103,59 @@ class _JoynOtpInputState extends State<JoynOtpInput> {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      children: List.generate(widget.length, (index) {
-        return SizedBox(
-          width: 64,
-          height: 64,
-          child: KeyboardListener(
-            focusNode: FocusNode(),
-            onKeyEvent: (event) {
-              if (event is KeyDownEvent &&
-                  event.logicalKey == LogicalKeyboardKey.backspace &&
-                  _controllers[index].text.isEmpty &&
-                  index > 0) {
-                _focusNodes[index - 1].requestFocus();
-                _controllers[index - 1].clear();
-              }
-            },
-            child: TextField(
-              controller: _controllers[index],
-              focusNode: _focusNodes[index],
-              keyboardType: TextInputType.number,
-              textAlign: TextAlign.center,
-              maxLength: 1,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              autofocus: index == 0,
-              style: JoynTypography.titleMedium.copyWith(
-                fontSize: 20,
-              ),
-              decoration: InputDecoration(
-                counterText: '',
-                contentPadding: EdgeInsets.zero,
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: const BorderSide(color: JoynColors.border, width: 1.2),
+    return AutofillGroup(
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: List.generate(widget.length, (index) {
+          return SizedBox(
+            width: 64,
+            height: 64,
+            child: KeyboardListener(
+              focusNode: FocusNode(),
+              onKeyEvent: (event) {
+                if (event is KeyDownEvent &&
+                    event.logicalKey == LogicalKeyboardKey.backspace &&
+                    _controllers[index].text.isEmpty &&
+                    index > 0) {
+                  _focusNodes[index - 1].requestFocus();
+                  _controllers[index - 1].clear();
+                }
+              },
+              child: TextField(
+                controller: _controllers[index],
+                focusNode: _focusNodes[index],
+                keyboardType: TextInputType.number,
+                textAlign: TextAlign.center,
+                autofillHints: const [AutofillHints.oneTimeCode],
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(widget.length),
+                ],
+                autofocus: index == 0,
+                style: JoynTypography.titleMedium.copyWith(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
                 ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: const BorderSide(color: JoynColors.primary, width: 1.8),
+                decoration: InputDecoration(
+                  counterText: '',
+                  contentPadding: EdgeInsets.zero,
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(color: JoynColors.border, width: 1.2),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(color: JoynColors.primary, width: 1.8),
+                  ),
+                  filled: true,
+                  fillColor: JoynColors.background,
                 ),
-                filled: true,
-                fillColor: JoynColors.background,
+                onChanged: (val) => _onFieldChanged(val, index),
               ),
-              onChanged: (val) => _onFieldChanged(val, index),
             ),
-          ),
-        );
-      }),
+          );
+        }),
+      ),
     );
   }
 }

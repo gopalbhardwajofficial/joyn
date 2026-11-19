@@ -132,14 +132,7 @@ function toValidUuidOrNull(val: any): string | null {
 
     const createdPayment = insertRes.rows[0];
 
-    // 3. Adjust party opening balance in parties table
-    if (validPartyId) {
-      // Payment In reduces amount to receive; Payment Out reduces amount to pay
-      await client.query(
-        `UPDATE parties SET opening_balance = opening_balance - $1 WHERE id = $2 AND business_id = $3`,
-        [parsedAmount, validPartyId, activeBusinessId]
-      );
-    }
+    // 3. Ledger integrity: party opening_balance represents initial balance and is preserved without mutation.
 
     // 4. Audit Log
     let logMemberId = null;

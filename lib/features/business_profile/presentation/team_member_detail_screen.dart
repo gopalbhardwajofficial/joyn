@@ -332,8 +332,10 @@ class _TeamMemberDetailScreenState extends State<TeamMemberDetailScreen> {
         final realLogs = logs.where((l) {
           final title = (l['title'] ?? '').toString().toLowerCase();
           final subtitle = (l['subtitle'] ?? '').toString().toLowerCase();
-          if (title.contains('team member joined') || (title.contains('team member updated'))) return false;
-          if (subtitle.contains('assigned as')) return false;
+          final actType = (l['activity_type'] ?? l['type'] ?? '').toString().toLowerCase();
+          if (title.contains('member') || title.contains('joined') || title.contains('activated') || title.contains('deactivated')) return false;
+          if (subtitle.contains('assigned as') || subtitle.contains('status changed')) return false;
+          if (actType == 'team_management' || actType == 'admin' || actType == 'profile_update') return false;
           return true;
         }).toList();
 

@@ -162,6 +162,10 @@ export async function googleAuthHandler(req: FastifyRequest, reply: FastifyReply
     let user;
 
     if (userResult.rows.length === 0) {
+      try {
+        await pool.query("UPDATE users SET phone_number = NULL WHERE phone_number = ''");
+      } catch (_) {}
+
       const newUserRes = await pool.query(
         `INSERT INTO users (email, full_name, phone_number) VALUES ($1, $2, $3) RETURNING *`,
         [cleanEmail, displayName || 'Google User', null]
@@ -174,6 +178,14 @@ export async function googleAuthHandler(req: FastifyRequest, reply: FastifyReply
     // 2. Issue JWT Token
     const tokenPayload = { userId: user.id, email: user.email, phone: user.phone_number || '' };
     const accessToken = (req.server as any).jwt.sign(tokenPayload, { expiresIn: '15d' });
+
+    // Auto-link team_members with this user_id if invited previously
+    await pool.query(
+      `UPDATE team_members
+       SET user_id = $1
+       WHERE LOWER(email) = $2 AND user_id IS NULL`,
+      [user.id, cleanEmail]
+    );
 
     // 3. Fetch Owned Businesses
     const ownedRes = await pool.query(
