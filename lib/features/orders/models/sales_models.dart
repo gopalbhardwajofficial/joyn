@@ -62,6 +62,7 @@ class PartyModel {
   }
 
   PartyModel copyWith({
+    String? id,
     String? name,
     String? category,
     String? contactNumber,
@@ -77,9 +78,10 @@ class PartyModel {
     double? creditLimit,
     int? partyNumber,
     String? partyCode,
+    DateTime? createdAt,
   }) {
     return PartyModel(
-      id: id,
+      id: id ?? this.id,
       name: name ?? this.name,
       category: category ?? this.category,
       contactNumber: contactNumber ?? this.contactNumber,
@@ -90,7 +92,7 @@ class PartyModel {
       priorityLevel: priorityLevel ?? this.priorityLevel,
       photoPath: photoPath ?? this.photoPath,
       avatarIndex: avatarIndex ?? this.avatarIndex,
-      createdAt: createdAt,
+      createdAt: createdAt ?? this.createdAt,
       openingBalance: openingBalance ?? this.openingBalance,
       balanceType: balanceType ?? this.balanceType,
       creditLimit: creditLimit ?? this.creditLimit,

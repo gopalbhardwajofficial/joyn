@@ -782,8 +782,19 @@ class _PartyListScreenState extends State<PartyListScreen> {
       final parties = await _salesRepository.getParties();
       final balances = await _salesRepository.getAllPartyBalances();
       if (!mounted) return;
+
+      // In-memory deduplication by name so UI never shows duplicate cards
+      final Map<String, PartyModel> uniqueMap = {};
+      for (final p in parties) {
+        final key = p.name.trim().toLowerCase();
+        if (!uniqueMap.containsKey(key)) {
+          uniqueMap[key] = p;
+        }
+      }
+      final deduplicated = uniqueMap.values.toList();
+
       setState(() {
-        _parties = parties;
+        _parties = deduplicated;
         _balances = balances;
         _isLoading = false;
         _applyFilters();
@@ -798,7 +809,12 @@ class _PartyListScreenState extends State<PartyListScreen> {
           for (final raw in rawList) {
             final pMap = raw as Map<String, dynamic>;
             final pid = (pMap['id'] ?? pMap['party_id'] ?? '').toString();
-            if (pid.isNotEmpty && !_parties.any((p) => p.id == pid)) {
+            final pName = (pMap['name'] ?? '').toString().trim().toLowerCase();
+            final alreadyExists = _parties.any((p) =>
+                p.id == pid ||
+                (p.name.trim().toLowerCase() == pName && pName.isNotEmpty));
+
+            if (pid.isNotEmpty && !alreadyExists) {
               final pModel = PartyModel(
                 id: pid,
                 name: pMap['name']?.toString() ?? '',
@@ -817,15 +833,24 @@ class _PartyListScreenState extends State<PartyListScreen> {
                 partyNumber: (pMap['party_number'] as num?)?.toInt(),
                 partyCode: pMap['party_code']?.toString(),
               );
-              await _salesRepository.insertParty(pModel);
+              await _salesRepository.upsertPartyFromRemote(pModel);
               updated = true;
             }
           }
           if (updated && mounted) {
             final refreshed = await _salesRepository.getParties();
             final balancesRefreshed = await _salesRepository.getAllPartyBalances();
+
+            final Map<String, PartyModel> refMap = {};
+            for (final p in refreshed) {
+              final key = p.name.trim().toLowerCase();
+              if (!refMap.containsKey(key)) {
+                refMap[key] = p;
+              }
+            }
+
             setState(() {
-              _parties = refreshed;
+              _parties = refMap.values.toList();
               _balances = balancesRefreshed;
               _applyFilters();
             });

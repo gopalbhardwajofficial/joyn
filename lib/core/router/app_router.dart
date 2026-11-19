@@ -124,11 +124,16 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/add-sale-order',
       pageBuilder: (context, state) {
-        // ✅ existingOrder extra se le sakte hain (edit mode)
-        final existing = state.extra as SaleOrderModel?;
+        SaleOrderModel? existing;
+        PartyModel? preParty;
+        if (state.extra is SaleOrderModel) {
+          existing = state.extra as SaleOrderModel;
+        } else if (state.extra is PartyModel) {
+          preParty = state.extra as PartyModel;
+        }
         return CustomTransitionPage(
           key: state.pageKey,
-          child: AddSaleOrderScreen(existingOrder: existing),
+          child: AddSaleOrderScreen(existingOrder: existing, preSelectedParty: preParty),
           transitionsBuilder: _slideTransition,
         );
       },

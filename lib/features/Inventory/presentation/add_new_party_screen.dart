@@ -1042,27 +1042,6 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
 
         await _salesRepository.insertParty(party);
       }
-
-      // Sync with PostgreSQL Live Backend
-      try {
-        ApiService.createParty({
-          'name': _partyNameController.text.trim(),
-          'type': _partyType.name == 'customer' ? 'customer' : (_partyType.name == 'supplier' ? 'supplier' : 'both'),
-          'contact_number': _contactNumberController.text.trim(),
-          'email': _emailController.text.trim(),
-          'gst_number': _gstNumberController.text.trim(),
-          'billing_address': _billingAddressController.text.trim(),
-          'state': _selectedState,
-          'opening_balance': double.tryParse(_openingBalanceController.text.trim()) ?? 0,
-          'credit_limit': double.tryParse(_creditLimitController.text.trim()) ?? 0,
-        }).then((res) {
-          debugPrint('Backend sync party response: $res');
-        }).catchError((err) {
-          debugPrint('Backend sync party error: $err');
-        });
-      } catch (e) {
-        debugPrint('API Party sync catch: $e');
-      }
     }
 
     debugPrint(partyData.toString());

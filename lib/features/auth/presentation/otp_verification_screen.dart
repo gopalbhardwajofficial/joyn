@@ -45,7 +45,7 @@ class _OtpVerificationScreenState extends ConsumerState<OtpVerificationScreen>
         setState(() {
           _enteredCode = otp4;
         });
-        _verifyOtp();
+        _verifyOtp(otp4);
       }
     }
   }
@@ -59,20 +59,33 @@ class _OtpVerificationScreenState extends ConsumerState<OtpVerificationScreen>
     super.dispose();
   }
 
-  void _verifyOtp() async {
+  void _verifyOtp([String? explicitCode]) async {
     if (_isVerifying) return;
+    final otpToVerify = (explicitCode != null && explicitCode.trim().length >= 4)
+        ? explicitCode.trim().substring(0, 4)
+        : _enteredCode.trim();
+
+    if (otpToVerify.length < 4) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter the 4-digit OTP')),
+      );
+      return;
+    }
+
     setState(() {
       _isVerifying = true;
+      _enteredCode = otpToVerify;
     });
 
-    final res = await ref.read(authProvider.notifier).verifyOtpApi(_enteredCode);
+    final res = await ref.read(authProvider.notifier).verifyOtpApi(otpToVerify);
 
     if (mounted) {
       setState(() {
         _isVerifying = false;
       });
       if (res['success'] == true) {
-        context.push('/company-selection');
+        // Go to company selection and clear auth stack so back navigation cannot re-enter OTP
+        context.go('/company-selection');
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(res['message'] ?? 'OTP verification failed')),
@@ -130,15 +143,14 @@ class _OtpVerificationScreenState extends ConsumerState<OtpVerificationScreen>
                 length: 4,
                 value: _enteredCode,
                 onChanged: (code) {
-                  setState(() {
-                    _enteredCode = code;
-                  });
+                  _enteredCode = code;
+                  if (code.length == 4) {
+                    _verifyOtp(code);
+                  }
                 },
                 onCompleted: (code) {
-                  setState(() {
-                    _enteredCode = code;
-                  });
-                  _verifyOtp();
+                  _enteredCode = code;
+                  _verifyOtp(code);
                 },
               ),
 

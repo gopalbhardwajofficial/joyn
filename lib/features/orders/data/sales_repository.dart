@@ -160,7 +160,30 @@ class SalesRepository {
   Future<List<PartyModel>> getParties() async {
     final db = await _readyDb();
     final maps = await db.query('parties', orderBy: 'name ASC');
-    return maps.map((map) => PartyModel.fromDb(map)).toList();
+    final rawList = maps.map((map) => PartyModel.fromDb(map)).toList();
+
+    // Deduplicate in memory by lowercase trimmed name so UI NEVER sees duplicates
+    final uniqueMap = <String, PartyModel>{};
+    final duplicateIdsToDelete = <String>[];
+
+    for (final p in rawList) {
+      final key = p.name.trim().toLowerCase();
+      if (!uniqueMap.containsKey(key)) {
+        uniqueMap[key] = p;
+      } else {
+        // Mark redundant duplicate ID for background cleanup
+        duplicateIdsToDelete.add(p.id);
+      }
+    }
+
+    // Clean up duplicate rows from SQLite in background
+    if (duplicateIdsToDelete.isNotEmpty) {
+      for (final dupId in duplicateIdsToDelete) {
+        db.delete('parties', where: 'id = ?', whereArgs: [dupId]).catchError((_) => 0);
+      }
+    }
+
+    return uniqueMap.values.toList();
   }
 
   Future<PartyModel?> getPartyById(String id) async {
@@ -171,20 +194,83 @@ class SalesRepository {
     return PartyModel.fromDb(maps.first);
   }
 
+  /// Upsert party strictly from remote sync — NEVER triggers ApiService.createParty
+  Future<void> upsertPartyFromRemote(PartyModel party) async {
+    final db = await _readyDb();
+    final cleanName = party.name.trim().toLowerCase();
+    final existing = await db.query(
+      'parties',
+      where: 'id = ? OR (LOWER(TRIM(name)) = ? AND ? != "")',
+      whereArgs: [party.id, cleanName, party.name.trim()],
+      limit: 1,
+    );
+
+    if (existing.isNotEmpty) {
+      final existingId = existing.first['id'] as String;
+      final existingNum = existing.first['partyNumber'] as int?;
+      final existingCode = existing.first['partyCode'] as String?;
+      final merged = party.copyWith(
+        id: existingId,
+        partyNumber: party.partyNumber ?? existingNum,
+        partyCode: party.partyCode ?? existingCode,
+      );
+      await db.update(
+        'parties',
+        merged.toDb(),
+        where: 'id = ?',
+        whereArgs: [existingId],
+      );
+    } else {
+      await db.insert(
+        'parties',
+        party.toDb(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+  }
+
   Future<void> insertParty(PartyModel party) async {
     final db = await _readyDb();
+
+    // Check if party with same ID or same Name already exists in SQLite
+    final cleanName = party.name.trim().toLowerCase();
+    final existing = await db.query(
+      'parties',
+      where: 'id = ? OR (LOWER(TRIM(name)) = ? AND ? != "")',
+      whereArgs: [party.id, cleanName, party.name.trim()],
+      limit: 1,
+    );
+
     int partyNum = party.partyNumber ?? 0;
     String partyCode = party.partyCode ?? '';
+    String targetId = party.id;
+
+    if (existing.isNotEmpty) {
+      targetId = existing.first['id'] as String;
+      partyNum = (existing.first['partyNumber'] as int?) ?? partyNum;
+      partyCode = (existing.first['partyCode'] as String?) ?? partyCode;
+    }
+
     if (partyNum <= 0) {
       final maxVal = Sqflite.firstIntValue(
               await db.rawQuery('SELECT MAX(partyNumber) FROM parties')) ?? 1000;
       partyNum = (maxVal < 1000 ? 1000 : maxVal) + 1;
       partyCode = 'PRT-$partyNum';
     }
-    final partyToSave = party.copyWith(partyNumber: partyNum, partyCode: partyCode);
 
-    await db.insert('parties', partyToSave.toDb(),
-        conflictAlgorithm: ConflictAlgorithm.replace);
+    final partyToSave = party.copyWith(
+      id: targetId,
+      partyNumber: partyNum,
+      partyCode: partyCode,
+    );
+
+    if (existing.isNotEmpty) {
+      await db.update('parties', partyToSave.toDb(),
+          where: 'id = ?', whereArgs: [targetId]);
+    } else {
+      await db.insert('parties', partyToSave.toDb(),
+          conflictAlgorithm: ConflictAlgorithm.replace);
+    }
 
     final apiPayload = {
       'id': partyToSave.id,

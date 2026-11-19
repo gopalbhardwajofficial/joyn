@@ -374,7 +374,8 @@ class _CreditCashToggle extends StatelessWidget {
 // ==================== MAIN SCREEN ====================
 class AddSaleOrderScreen extends StatefulWidget {
   final SaleOrderModel? existingOrder;
-  const AddSaleOrderScreen({super.key, this.existingOrder});
+  final PartyModel? preSelectedParty;
+  const AddSaleOrderScreen({super.key, this.existingOrder, this.preSelectedParty});
 
   @override
   State<AddSaleOrderScreen> createState() => _AddSaleOrderScreenState();
@@ -443,6 +444,15 @@ class _AddSaleOrderScreenState extends State<AddSaleOrderScreen> {
 
     if (_isEditing) {
       _prefillFromExisting(widget.existingOrder!);
+    } else if (widget.preSelectedParty != null) {
+      _selectedPartyId = widget.preSelectedParty!.id;
+      _customerController.text = widget.preSelectedParty!.name;
+      _phoneController.text = widget.preSelectedParty!.contactNumber;
+      if (widget.preSelectedParty!.address.isNotEmpty) {
+        _stateOfSupply = widget.preSelectedParty!.city.isNotEmpty
+            ? widget.preSelectedParty!.city
+            : 'Select State';
+      }
     }
 
     _loadSavedParties();
@@ -824,22 +834,19 @@ class _AddSaleOrderScreenState extends State<AddSaleOrderScreen> {
                             .push<Map<String, dynamic>>(MaterialPageRoute(
                             builder: (_) => const AddNewPartyScreen()));
                         if (result != null) {
-                          final newParty = PartyModel(
-                            id: DateTime.now()
-                                .millisecondsSinceEpoch
-                                .toString(),
-                            name: (result['name'] ?? '').toString(),
-                            category: (result['category'] ?? '').toString(),
-                            contactNumber:
-                            (result['contactNumber'] ?? '').toString(),
-                            createdAt: DateTime.now(),
-                          );
-                          await _salesRepository.insertParty(newParty);
-                          _loadSavedParties();
+                          await _loadSavedParties();
+                          final partyName = (result['name'] ?? '').toString();
+                          PartyModel? matched;
+                          for (final p in _savedParties) {
+                            if (p.name.trim().toLowerCase() == partyName.trim().toLowerCase()) {
+                              matched = p;
+                              break;
+                            }
+                          }
                           setState(() {
-                            _selectedPartyId = newParty.id;
-                            _customerController.text = newParty.name;
-                            _phoneController.text = newParty.contactNumber;
+                            _selectedPartyId = matched?.id ?? '';
+                            _customerController.text = partyName;
+                            _phoneController.text = (result['contactNumber'] ?? matched?.contactNumber ?? '').toString();
                           });
                         }
                       },

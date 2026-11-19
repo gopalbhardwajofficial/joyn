@@ -774,21 +774,18 @@ class _AddPurchaseOrderScreenState extends State<AddPurchaseOrderScreen> {
                             .push<Map<String, dynamic>>(MaterialPageRoute(
                             builder: (_) => const AddNewPartyScreen()));
                         if (result != null) {
-                          final newParty = PartyModel(
-                            id: DateTime.now()
-                                .millisecondsSinceEpoch
-                                .toString(),
-                            name: (result['name'] ?? '').toString(),
-                            category: (result['category'] ?? '').toString(),
-                            contactNumber:
-                            (result['contactNumber'] ?? '').toString(),
-                            createdAt: DateTime.now(),
-                          );
-                          await _salesRepository.insertParty(newParty);
-                          _loadSavedParties();
+                          await _loadSavedParties();
+                          final partyName = (result['name'] ?? '').toString();
+                          PartyModel? matched;
+                          for (final p in _savedParties) {
+                            if (p.name.trim().toLowerCase() == partyName.trim().toLowerCase()) {
+                              matched = p;
+                              break;
+                            }
+                          }
                           setState(() {
-                            _selectedPartyId = newParty.id;
-                            _partyNameController.text = newParty.name;
+                            _selectedPartyId = matched?.id ?? '';
+                            _partyNameController.text = partyName;
                             _isOneTimeParty = false;
                           });
                         }

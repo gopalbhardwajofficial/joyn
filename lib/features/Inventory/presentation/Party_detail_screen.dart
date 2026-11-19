@@ -3,10 +3,13 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import '../../../core/theme/joyn_colors.dart';
 import '../../../core/theme/joyn_typography.dart';
+import '../../../core/services/report_export_service.dart';
 import '../../orders/models/sales_models.dart';
 import '../../orders/data/sales_repository.dart';
+import '../../orders/presentation/add_sale_order_screen.dart';
 import 'add_new_party_screen.dart';
 import 'sale_form_screen.dart';
 import 'payment_in_screen.dart';
@@ -156,6 +159,7 @@ class _PressableState extends State<_Pressable> {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTapDown: (_) => setState(() => _pressed = true),
       onTapUp: (_) => setState(() => _pressed = false),
       onTapCancel: () => setState(() => _pressed = false),
@@ -489,10 +493,14 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
 
   Future<void> _openAddSale() async {
     HapticFeedback.lightImpact();
-    final saved = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => SaleFormScreen(party: _party)),
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AddSaleOrderScreen(preSelectedParty: _party),
+      ),
     );
-    if (saved == true) _loadData();
+    if (mounted) {
+      _loadData();
+    }
   }
 
   void _sendReminder() {
@@ -506,14 +514,36 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
     );
   }
 
-  void _sendStatement() {
+  Future<void> _sendStatement() async {
     HapticFeedback.lightImpact();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Send Statement — wire this to PDF export'),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      ),
+    final tableHeaders = ['Date', 'Type', 'Ref No', 'Amount (₹)', 'Due (₹)'];
+
+    final tableRows = _allActivities.map((act) {
+      final isSale = act.kind == _ActivityKind.sale;
+      return [
+        act.date,
+        isSale ? 'Sale Order' : 'Purchase Order',
+        act.refNo,
+        act.total.toStringAsFixed(2),
+        act.balanceDue.toStringAsFixed(2),
+      ];
+    }).toList();
+
+    final summary = {
+      'Party Name': _party.name,
+      'Contact': _party.contactNumber.isNotEmpty ? _party.contactNumber : 'N/A',
+      'Opening Balance': '₹${_party.openingBalance.toStringAsFixed(2)} (${_party.balanceType == 'toReceive' ? 'To Receive' : 'To Pay'})',
+      'Total Sales': '₹${_totalSales.toStringAsFixed(2)}',
+      'Net Balance Due': '₹${_balance.abs().toStringAsFixed(2)} (${_isReceivable ? 'To Receive' : 'To Pay'})',
+    };
+
+    await ReportExportService.showPdfOptionsSheet(
+      context: context,
+      title: 'Party Statement - ${_party.name}',
+      periodLabel: 'Full Ledger Statement',
+      summaryStats: summary,
+      tableHeaders: tableHeaders,
+      tableRows: tableRows,
     );
   }
 
@@ -694,16 +724,6 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
                 onTap: () {
                   Navigator.pop(context);
                   _openTakePayment();
-                },
-              ),
-              _buildMenuTile(
-                icon: Icons.notifications_active_outlined,
-                color: const Color(0xFFF59E0B),
-                label: 'Send Reminder',
-                subtitle: 'Nudge via SMS / WhatsApp',
-                onTap: () {
-                  Navigator.pop(context);
-                  _sendReminder();
                 },
               ),
               _buildMenuTile(

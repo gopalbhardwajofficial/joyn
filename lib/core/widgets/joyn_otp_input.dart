@@ -44,7 +44,7 @@ class _JoynOtpInputState extends State<JoynOtpInput> {
   }
 
   void _applyValue(String? val) {
-    if (val == null) return;
+    if (val == null || val.isEmpty) return;
     final digits = val.replaceAll(RegExp(r'\D'), '');
     for (int i = 0; i < widget.length; i++) {
       if (i < digits.length) {
@@ -52,6 +52,11 @@ class _JoynOtpInputState extends State<JoynOtpInput> {
       } else {
         _controllers[i].clear();
       }
+    }
+    if (digits.length >= widget.length) {
+      final code = digits.substring(0, widget.length);
+      widget.onChanged?.call(code);
+      widget.onCompleted?.call(code);
     }
   }
 

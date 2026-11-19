@@ -86,12 +86,12 @@ class _CompanySelectionScreenState
       BuildContext context, WidgetRef ref, String companyName, [UserBusinessModel? business]) {
     HapticFeedback.selectionClick();
     ref.read(authProvider.notifier).selectCompany(companyName, business);
-    context.push('/dashboard');
+    context.go('/dashboard');
   }
 
   void _handleCreateNewBusiness(BuildContext context, WidgetRef ref) {
     HapticFeedback.selectionClick();
-    context.push('/dashboard?autoShowSetup=true');
+    context.go('/dashboard?autoShowSetup=true');
   }
 
   @override
