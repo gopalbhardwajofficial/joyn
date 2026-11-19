@@ -5,7 +5,6 @@ import 'package:sms_autofill/sms_autofill.dart';
 import 'package:video_player/video_player.dart';
 import '../../../core/theme/joyn_typography.dart';
 import '../../../core/widgets/joyn_button.dart';
-import '../../../core/widgets/joyn_logo.dart';
 import '../providers/auth_provider.dart';
 import 'phone_picker_bottom_sheet.dart';
 
@@ -40,7 +39,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
 
     await _disposeVideoController();
 
-    final controller = VideoPlayerController.asset('assets/JoynSplashVideo.mp4');
+    final controller = VideoPlayerController.asset('assets/joynrealsplash.mp4');
     _videoController = controller;
 
     controller
@@ -162,12 +161,6 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-
-                  const JoynLogo(
-                    color: Colors.white,
-                    size: 26,
-                  ),
-
                   const Spacer(),
 
                   Text(
