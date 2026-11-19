@@ -141,6 +141,16 @@ class _SaleOrdersListScreenState extends State<SaleOrdersListScreen>
         _isLoading = false;
         _applyFilters();
       });
+
+      // Background cloud sync
+      _salesRepository.syncSaleOrdersFromCloud().then((cloudOrders) {
+        if (mounted && cloudOrders.isNotEmpty) {
+          setState(() {
+            _orders = cloudOrders;
+            _applyFilters();
+          });
+        }
+      }).catchError((_) {});
     } catch (e) {
       debugPrint('Error loading orders: $e');
       if (!mounted) return;
@@ -397,7 +407,6 @@ class _SaleOrdersListScreenState extends State<SaleOrdersListScreen>
                       child: OrderListHeader(
                         title: 'Sales',
                         subtitle: subtitle,
-                        onBack: () => context.pop(),
                         onSort: _showSortSheet,
                         onFilterSettings: () =>
                             showOrderFilterSettings(context, _filters),

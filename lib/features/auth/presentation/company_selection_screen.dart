@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/models/user_business_model.dart';
 import '../../../core/theme/joyn_colors.dart';
 import '../../../core/theme/joyn_typography.dart';
 import '../providers/auth_provider.dart';
@@ -73,10 +74,18 @@ class CompanySelectionScreen extends ConsumerStatefulWidget {
 
 class _CompanySelectionScreenState
     extends ConsumerState<CompanySelectionScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await ref.read(authProvider.notifier).fetchUserBusinessesApi();
+    });
+  }
+
   void _handleExistingCompanySelect(
-      BuildContext context, WidgetRef ref, String companyName) {
+      BuildContext context, WidgetRef ref, String companyName, [UserBusinessModel? business]) {
     HapticFeedback.selectionClick();
-    ref.read(authProvider.notifier).selectCompany(companyName);
+    ref.read(authProvider.notifier).selectCompany(companyName, business);
     context.push('/dashboard');
   }
 
@@ -88,7 +97,9 @@ class _CompanySelectionScreenState
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
-    final businesses = authState.createdBusinesses;
+    final userBusinesses = authState.userBusinesses;
+    final fallbackBusinesses = authState.createdBusinesses;
+    final bool hasBusinesses = userBusinesses.isNotEmpty || fallbackBusinesses.isNotEmpty;
 
     return Scaffold(
       backgroundColor: JoynColors.background,
@@ -179,27 +190,39 @@ class _CompanySelectionScreenState
 
                   const SizedBox(height: 28),
 
-                  if (businesses.isNotEmpty) ...[
+                  if (hasBusinesses) ...[
                     _buildSectionHeader(
                       1,
-                      'Your Businesses',
+                      'Your Businesses & Firms',
                       Icons.work_outline_rounded,
                     ),
                     const SizedBox(height: 16),
                   ],
 
-                  ...businesses.map((company) {
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 14),
-                      child: _buildBusinessCard(
-                        context: context,
-                        ref: ref,
-                        companyName: company,
-                      ),
-                    );
-                  }),
+                  if (userBusinesses.isNotEmpty)
+                    ...userBusinesses.map((biz) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 14),
+                        child: _buildUserBusinessCard(
+                          context: context,
+                          ref: ref,
+                          business: biz,
+                        ),
+                      );
+                    })
+                  else
+                    ...fallbackBusinesses.map((company) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 14),
+                        child: _buildBusinessCard(
+                          context: context,
+                          ref: ref,
+                          companyName: company,
+                        ),
+                      );
+                    }),
 
-                  if (businesses.isNotEmpty) ...[
+                  if (hasBusinesses) ...[
                     const SizedBox(height: 10),
                     Row(
                       children: [
@@ -232,7 +255,7 @@ class _CompanySelectionScreenState
                     const SizedBox(height: 20),
                   ],
 
-                  if (businesses.isNotEmpty) ...[
+                  if (hasBusinesses) ...[
                     _buildSectionHeader(
                       2,
                       'Create New',
@@ -316,6 +339,160 @@ class _CompanySelectionScreenState
   }
 
 
+
+  Widget _buildUserBusinessCard({
+    required BuildContext context,
+    required WidgetRef ref,
+    required UserBusinessModel business,
+  }) {
+    final isOwner = business.isOwner;
+    return Container(
+      decoration: BoxDecoration(
+        gradient: _Premium.surfaceGradient,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: JoynColors.border,
+          width: 1.2,
+        ),
+        boxShadow: _Premium.cardShadow,
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: () {
+            HapticFeedback.lightImpact();
+            _handleExistingCompanySelect(context, ref, business.businessName, business);
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: isOwner
+                          ? [
+                              JoynColors.primary.withValues(alpha: 0.08),
+                              JoynColors.primary.withValues(alpha: 0.16),
+                            ]
+                          : [
+                              const Color(0xFF2563EB).withValues(alpha: 0.10),
+                              const Color(0xFF1D4ED8).withValues(alpha: 0.20),
+                            ],
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    business.businessName.isNotEmpty
+                        ? business.businessName[0].toUpperCase()
+                        : '?',
+                    style: JoynTypography.titleMedium.copyWith(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      color: isOwner ? JoynColors.primary : const Color(0xFF1D4ED8),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        business.businessName,
+                        style: JoynTypography.bodyLarge.copyWith(
+                          fontSize: 15.5,
+                          fontWeight: FontWeight.w700,
+                          color: JoynColors.primary,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 5),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isOwner
+                                  ? const Color(0xFFDCFCE7)
+                                  : const Color(0xFFFEF3C7),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  isOwner
+                                      ? Icons.verified_user_rounded
+                                      : Icons.badge_outlined,
+                                  size: 11,
+                                  color: isOwner
+                                      ? const Color(0xFF166534)
+                                      : const Color(0xFF92400E),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  isOwner ? 'Owner' : 'Staff • ${business.userRole}',
+                                  style: JoynTypography.caption.copyWith(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: isOwner
+                                        ? const Color(0xFF166534)
+                                        : const Color(0xFF92400E),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (!isOwner && business.ownerName.isNotEmpty) ...[
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                'by ${business.ownerName}',
+                                style: JoynTypography.caption.copyWith(
+                                  fontSize: 10.5,
+                                  color: JoynColors.secondaryText,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: JoynColors.chipBackground,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.arrow_forward_rounded,
+                    size: 16,
+                    color: JoynColors.secondaryText,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _buildBusinessCard({
     required BuildContext context,

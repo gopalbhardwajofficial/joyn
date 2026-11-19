@@ -2,7 +2,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/database/database_helper.dart';
+import '../../../core/models/user_business_model.dart';
+import '../../../core/services/api_service.dart';
 import '../../../core/services/local_storage_service.dart';
+import '../../../core/services/notification_service.dart';
 import '../../business_profile/data/business_profile_repository.dart';
 import '../../business_profile/models/business_profile_model.dart';
 
@@ -16,6 +19,8 @@ class AuthState {
   final bool isTimerRunning;
   final String? selectedCompany;
   final List<String> createdBusinesses;
+  final List<UserBusinessModel> userBusinesses;
+  final UserBusinessModel? activeBusiness;
 
   final String ownerName;
   final String gstNumber;
@@ -39,9 +44,22 @@ class AuthState {
   final bool showBusinessTypeOnCard;
   final bool showCategoryOnCard;
 
+  // Phase 8: Branding, Bank Details & Invoice Customization
+  final String bankName;
+  final String accountNumber;
+  final String ifscCode;
+  final String branchName;
+  final String upiId;
+  final String invoiceTheme;
+  final String invoiceColorHex;
+  final String invoiceTerms;
+  final bool showUpiQr;
+  final String? logoUrl;
+  final String? signatureUrl;
+
   const AuthState({
     this.isLoggedIn = false,
-    this.phoneNumber = '+91 81308 20030',
+    this.phoneNumber = '',
     this.userName = '',
     this.businessName = '',
     this.email = '',
@@ -49,6 +67,8 @@ class AuthState {
     this.isTimerRunning = false,
     this.selectedCompany,
     this.createdBusinesses = const [],
+    this.userBusinesses = const [],
+    this.activeBusiness,
     this.ownerName = '',
     this.gstNumber = '',
     this.businessType = 'Retail Business',
@@ -61,7 +81,7 @@ class AuthState {
     this.pincode = '',
     this.country = 'India',
     this.description = '',
-    this.booksStartDate = '28/07/2026',
+    this.booksStartDate = '',
     this.hasLogo = false,
     this.hasSignature = false,
     this.logoImagePath,
@@ -69,7 +89,27 @@ class AuthState {
     this.showGstOnCard = false,
     this.showBusinessTypeOnCard = false,
     this.showCategoryOnCard = false,
+    this.bankName = '',
+    this.accountNumber = '',
+    this.ifscCode = '',
+    this.branchName = '',
+    this.upiId = '',
+    this.invoiceTheme = 'classic_blue',
+    this.invoiceColorHex = '#4338CA',
+    this.invoiceTerms = '',
+    this.showUpiQr = true,
+    this.logoUrl,
+    this.signatureUrl,
   });
+
+  BusinessPermissions get permissions =>
+      activeBusiness?.permissions ??
+      (isLoggedIn && (activeBusiness?.isOwner ?? true)
+          ? BusinessPermissions.allGranted
+          : const BusinessPermissions());
+
+  bool get isOwner => activeBusiness?.isOwner ?? true;
+  String get userRole => activeBusiness?.userRole ?? 'Owner';
 
   int get profileCompletionPercentage {
     int score = 0;
@@ -95,6 +135,8 @@ class AuthState {
     bool? isTimerRunning,
     String? selectedCompany,
     List<String>? createdBusinesses,
+    List<UserBusinessModel>? userBusinesses,
+    UserBusinessModel? activeBusiness,
     String? ownerName,
     String? gstNumber,
     String? businessType,
@@ -115,6 +157,17 @@ class AuthState {
     bool? showGstOnCard,
     bool? showBusinessTypeOnCard,
     bool? showCategoryOnCard,
+    String? bankName,
+    String? accountNumber,
+    String? ifscCode,
+    String? branchName,
+    String? upiId,
+    String? invoiceTheme,
+    String? invoiceColorHex,
+    String? invoiceTerms,
+    bool? showUpiQr,
+    String? logoUrl,
+    String? signatureUrl,
   }) {
     return AuthState(
       isLoggedIn: isLoggedIn ?? this.isLoggedIn,
@@ -126,6 +179,8 @@ class AuthState {
       isTimerRunning: isTimerRunning ?? this.isTimerRunning,
       selectedCompany: selectedCompany ?? this.selectedCompany,
       createdBusinesses: createdBusinesses ?? this.createdBusinesses,
+      userBusinesses: userBusinesses ?? this.userBusinesses,
+      activeBusiness: activeBusiness ?? this.activeBusiness,
       ownerName: ownerName ?? this.ownerName,
       gstNumber: gstNumber ?? this.gstNumber,
       businessType: businessType ?? this.businessType,
@@ -146,6 +201,17 @@ class AuthState {
       showGstOnCard: showGstOnCard ?? this.showGstOnCard,
       showBusinessTypeOnCard: showBusinessTypeOnCard ?? this.showBusinessTypeOnCard,
       showCategoryOnCard: showCategoryOnCard ?? this.showCategoryOnCard,
+      bankName: bankName ?? this.bankName,
+      accountNumber: accountNumber ?? this.accountNumber,
+      ifscCode: ifscCode ?? this.ifscCode,
+      branchName: branchName ?? this.branchName,
+      upiId: upiId ?? this.upiId,
+      invoiceTheme: invoiceTheme ?? this.invoiceTheme,
+      invoiceColorHex: invoiceColorHex ?? this.invoiceColorHex,
+      invoiceTerms: invoiceTerms ?? this.invoiceTerms,
+      showUpiQr: showUpiQr ?? this.showUpiQr,
+      logoUrl: logoUrl ?? this.logoUrl,
+      signatureUrl: signatureUrl ?? this.signatureUrl,
     );
   }
 }
@@ -223,6 +289,17 @@ class AuthNotifier extends StateNotifier<AuthState> {
           showGstOnCard: dbProfile.showGstOnCard,
           showBusinessTypeOnCard: dbProfile.showBusinessTypeOnCard,
           showCategoryOnCard: dbProfile.showCategoryOnCard,
+          bankName: dbProfile.bankName,
+          accountNumber: dbProfile.accountNumber,
+          ifscCode: dbProfile.ifscCode,
+          branchName: dbProfile.branchName,
+          upiId: dbProfile.upiId,
+          invoiceTheme: dbProfile.invoiceTheme,
+          invoiceColorHex: dbProfile.invoiceColorHex,
+          invoiceTerms: dbProfile.invoiceTerms,
+          showUpiQr: dbProfile.showUpiQr,
+          logoUrl: dbProfile.logoUrl,
+          signatureUrl: dbProfile.signatureUrl,
         );
       }
     } catch (e) {
@@ -238,6 +315,155 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> completeLogin() async {
     state = state.copyWith(isLoggedIn: true);
     await _storage?.setLoggedIn(true);
+  }
+
+  /// Phase 1 API Integration: Dispatch SMS OTP via 2Factor.in Gateway
+  Future<Map<String, dynamic>> sendOtpApi(String phone) async {
+    await setPhoneNumber(phone);
+    startOtpTimer();
+    return await ApiService.sendOtp(phone);
+  }
+
+  /// Phase 1 API Integration: Verify OTP & Sync JWT Session
+  Future<Map<String, dynamic>> verifyOtpApi(String otp) async {
+    final result = await ApiService.verifyOtp(state.phoneNumber, otp);
+    if (result['success'] == true) {
+      await completeLogin();
+
+      // Clear any cached session businesses and SQLite tables from a previous user
+      await _storage?.clearUserSession();
+      await DatabaseHelper().clearUserData();
+
+      final List<dynamic> rawBusinesses = result['businesses'] ?? [];
+      final List<UserBusinessModel> parsedBusinesses = rawBusinesses
+          .map((b) => UserBusinessModel.fromJson(Map<String, dynamic>.from(b as Map)))
+          .toList();
+
+      final List<String> userBizNames = parsedBusinesses
+          .map((b) => b.businessName)
+          .where((n) => n.isNotEmpty)
+          .toList();
+
+      // Set ONLY the authenticated user's business list
+      await _storage?.setBusinessesList(userBizNames);
+
+      UserBusinessModel? firstBiz = parsedBusinesses.isNotEmpty ? parsedBusinesses.first : null;
+      if (firstBiz != null) {
+        await ApiService.saveActiveBusinessId(firstBiz.id);
+        await _storage?.setBusinessName(firstBiz.businessName);
+      } else {
+        await _storage?.setBusinessName('');
+      }
+
+      state = state.copyWith(
+        createdBusinesses: userBizNames,
+        userBusinesses: parsedBusinesses,
+        activeBusiness: firstBiz,
+        businessName: firstBiz?.businessName ?? '',
+        selectedCompany: firstBiz?.businessName,
+      );
+
+      // Phase 9: Sync FCM Push Token with authenticated user
+      NotificationService.syncTokenWithBackend();
+    }
+    return result;
+  }
+
+  /// Phase 1 API Integration: Google Login & Sync JWT Session
+  Future<Map<String, dynamic>> googleLoginApi({
+    required String email,
+    String? displayName,
+    String? photoUrl,
+  }) async {
+    final result = await ApiService.googleAuth(
+      email: email,
+      displayName: displayName,
+      photoUrl: photoUrl,
+    );
+    if (result['success'] == true) {
+      await completeLogin();
+
+      await _storage?.clearUserSession();
+      await DatabaseHelper().clearUserData();
+      await _storage?.setEmail(email);
+
+      final List<dynamic> rawBusinesses = result['businesses'] ?? [];
+      final List<UserBusinessModel> parsedBusinesses = rawBusinesses
+          .map((b) => UserBusinessModel.fromJson(Map<String, dynamic>.from(b as Map)))
+          .toList();
+
+      final List<String> userBizNames = parsedBusinesses
+          .map((b) => b.businessName)
+          .where((n) => n.isNotEmpty)
+          .toList();
+
+      await _storage?.setBusinessesList(userBizNames);
+
+      UserBusinessModel? firstBiz = parsedBusinesses.isNotEmpty ? parsedBusinesses.first : null;
+      if (firstBiz != null) {
+        await ApiService.saveActiveBusinessId(firstBiz.id);
+        await _storage?.setBusinessName(firstBiz.businessName);
+      } else {
+        await _storage?.setBusinessName('');
+      }
+
+      state = state.copyWith(
+        email: email,
+        userName: displayName ?? state.userName,
+        createdBusinesses: userBizNames,
+        userBusinesses: parsedBusinesses,
+        activeBusiness: firstBiz,
+        businessName: firstBiz?.businessName ?? '',
+        selectedCompany: firstBiz?.businessName,
+      );
+
+      NotificationService.syncTokenWithBackend();
+    }
+    return result;
+  }
+
+  /// Phase 1 API Integration: Fetch User Businesses from Backend
+  Future<void> fetchUserBusinessesApi() async {
+    final result = await ApiService.fetchMyBusinesses();
+    if (result['success'] == true && result['businesses'] != null) {
+      final List<dynamic> rawBusinesses = result['businesses'];
+      final List<UserBusinessModel> parsedBusinesses = rawBusinesses
+          .map((b) => UserBusinessModel.fromJson(Map<String, dynamic>.from(b as Map)))
+          .toList();
+
+      final List<String> userBizNames = parsedBusinesses
+          .map((b) => b.businessName)
+          .where((n) => n.isNotEmpty)
+          .toList();
+
+      UserBusinessModel? activeBiz = state.activeBusiness;
+      if (parsedBusinesses.isNotEmpty) {
+        if (activeBiz != null) {
+          final matched = parsedBusinesses.where((b) => b.id == activeBiz!.id);
+          if (matched.isNotEmpty) {
+            activeBiz = matched.first;
+          } else {
+            activeBiz = parsedBusinesses.first;
+          }
+        } else {
+          activeBiz = parsedBusinesses.first;
+        }
+        await ApiService.saveActiveBusinessId(activeBiz.id);
+        await _storage?.setBusinessName(activeBiz.businessName);
+      } else {
+        await _storage?.setBusinessName('');
+        activeBiz = null;
+      }
+
+      await _storage?.setBusinessesList(userBizNames);
+      state = state.copyWith(
+        createdBusinesses: userBizNames,
+        userBusinesses: parsedBusinesses,
+        activeBusiness: activeBiz,
+        businessName: activeBiz?.businessName ?? '',
+        selectedCompany: activeBiz?.businessName,
+      );
+    }
   }
 
   Future<void> updateBusinessInfo({
@@ -292,6 +518,17 @@ class AuthNotifier extends StateNotifier<AuthState> {
     bool? showGstOnCard,
     bool? showBusinessTypeOnCard,
     bool? showCategoryOnCard,
+    String? bankName,
+    String? accountNumber,
+    String? ifscCode,
+    String? branchName,
+    String? upiId,
+    String? invoiceTheme,
+    String? invoiceColorHex,
+    String? invoiceTerms,
+    bool? showUpiQr,
+    String? logoUrl,
+    String? signatureUrl,
   }) async {
     await _storage?.setBusinessName(businessName);
     await _storage?.setOwnerName(ownerName);
@@ -341,9 +578,52 @@ class AuthNotifier extends StateNotifier<AuthState> {
       showBusinessTypeOnCard: showBusinessTypeOnCard ?? state.showBusinessTypeOnCard,
       showCategoryOnCard: showCategoryOnCard ?? state.showCategoryOnCard,
       updatedAt: DateTime.now(),
+      bankName: bankName ?? state.bankName,
+      accountNumber: accountNumber ?? state.accountNumber,
+      ifscCode: ifscCode ?? state.ifscCode,
+      branchName: branchName ?? state.branchName,
+      upiId: upiId ?? state.upiId,
+      invoiceTheme: invoiceTheme ?? state.invoiceTheme,
+      invoiceColorHex: invoiceColorHex ?? state.invoiceColorHex,
+      invoiceTerms: invoiceTerms ?? state.invoiceTerms,
+      showUpiQr: showUpiQr ?? state.showUpiQr,
+      logoUrl: logoUrl ?? state.logoUrl,
+      signatureUrl: signatureUrl ?? state.signatureUrl,
     );
 
     await _businessProfileRepository.saveBusinessProfile(profile);
+
+    // Sync Business Profile & Branding with Cloud Backend API (Phase 1 & Phase 8)
+    ApiService.createBusiness({
+      'businessName': businessName,
+      'ownerName': ownerName,
+      'gstNumber': gstNumber,
+      'businessType': businessType,
+      'businessCategory': businessCategory,
+      'phone1': phone1,
+      'email': email,
+      'address': address,
+      'state': stateName,
+    }).catchError((_) => <String, dynamic>{'success': false});
+
+    ApiService.updateBusinessBranding(brandingData: {
+      'businessName': businessName,
+      'ownerName': ownerName,
+      'gstNumber': gstNumber,
+      'phone1': phone1,
+      'email': email,
+      'address': address,
+      'state': stateName,
+      'bankName': bankName ?? state.bankName,
+      'accountNumber': accountNumber ?? state.accountNumber,
+      'ifscCode': ifscCode ?? state.ifscCode,
+      'branchName': branchName ?? state.branchName,
+      'upiId': upiId ?? state.upiId,
+      'invoiceTheme': invoiceTheme ?? state.invoiceTheme,
+      'invoiceColorHex': invoiceColorHex ?? state.invoiceColorHex,
+      'invoiceTerms': invoiceTerms ?? state.invoiceTerms,
+      'showUpiQr': showUpiQr ?? state.showUpiQr,
+    }).catchError((_) => <String, dynamic>{'success': false});
 
     final updatedBusinesses = _storage?.businessesList ?? state.createdBusinesses;
 
@@ -373,6 +653,17 @@ class AuthNotifier extends StateNotifier<AuthState> {
       showCategoryOnCard: showCategoryOnCard ?? state.showCategoryOnCard,
       selectedCompany: businessName.isNotEmpty ? businessName : state.selectedCompany,
       createdBusinesses: updatedBusinesses,
+      bankName: bankName ?? state.bankName,
+      accountNumber: accountNumber ?? state.accountNumber,
+      ifscCode: ifscCode ?? state.ifscCode,
+      branchName: branchName ?? state.branchName,
+      upiId: upiId ?? state.upiId,
+      invoiceTheme: invoiceTheme ?? state.invoiceTheme,
+      invoiceColorHex: invoiceColorHex ?? state.invoiceColorHex,
+      invoiceTerms: invoiceTerms ?? state.invoiceTerms,
+      showUpiQr: showUpiQr ?? state.showUpiQr,
+      logoUrl: logoUrl ?? state.logoUrl,
+      signatureUrl: signatureUrl ?? state.signatureUrl,
     );
   }
 
@@ -399,11 +690,25 @@ class AuthNotifier extends StateNotifier<AuthState> {
     });
   }
 
-  Future<void> selectCompany(String companyName) async {
+  Future<void> selectCompany(String companyName, [UserBusinessModel? business]) async {
+    UserBusinessModel? target = business;
+    if (target == null && state.userBusinesses.isNotEmpty) {
+      try {
+        target = state.userBusinesses.firstWhere((b) => b.businessName == companyName);
+      } catch (_) {
+        target = null;
+      }
+    }
+
+    if (target != null) {
+      await ApiService.saveActiveBusinessId(target.id);
+    }
+
     await _storage?.setBusinessName(companyName);
     state = state.copyWith(
       selectedCompany: companyName,
       businessName: companyName,
+      activeBusiness: target ?? state.activeBusiness,
       isLoggedIn: true,
     );
     await _storage?.setLoggedIn(true);

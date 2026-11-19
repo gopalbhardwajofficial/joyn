@@ -3,7 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:joyn/core/theme/joyn_typography.dart';
 import 'package:joyn/core/theme/joyn_colors.dart';
-import 'package:joyn/core/widgets/Premium_widget.dart';
+import 'package:joyn/core/services/api_service.dart';
+import 'package:joyn/core/services/report_export_service.dart';
 
 class CashTxn {
   final String name;
@@ -25,29 +26,88 @@ class _CashflowReportScreenState extends State<CashflowReportScreen> with Single
   late TabController _tabController;
 
   String selectedPeriod = 'This Month';
-  DateTime fromDate = DateTime(2026, 9, 1);
-  DateTime toDate = DateTime(2026, 9, 30);
+  DateTime fromDate = DateTime.now();
+  DateTime toDate = DateTime.now();
+  bool _isLoading = false;
 
   bool showZeroValueTxns = true;
   bool considerOpeningClosingCash = true;
 
   double openingCash = 0.00;
-  double moneyIn = 500.00;
+  double moneyIn = 0.00;
   double moneyOut = 0.00;
-  double get closingCash => openingCash + moneyIn - moneyOut;
+  double get closingCash => considerOpeningClosingCash ? (openingCash + moneyIn - moneyOut) : (moneyIn - moneyOut);
 
-  final List<CashTxn> moneyInTxns = [
-    CashTxn(name: 'Gopal', date: DateTime(2026, 9, 5), txnType: 'Sale', amount: 500.00),
-    CashTxn(name: 'gill', date: DateTime(2026, 9, 5), txnType: 'Sale', amount: 0.00),
-  ];
-
-  final List<CashTxn> moneyOutTxns = [];
+  List<CashTxn> moneyInTxns = [];
+  List<CashTxn> moneyOutTxns = [];
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(() => setState(() {}));
+    final now = DateTime.now();
+    fromDate = DateTime(now.year, now.month, 1);
+    toDate = DateTime(now.year, now.month + 1, 0);
+    _fetchCashFlow();
+  }
+
+  Future<void> _fetchCashFlow() async {
+    setState(() => _isLoading = true);
+    final startStr = DateFormat('yyyy-MM-dd').format(fromDate);
+    final endStr = DateFormat('yyyy-MM-dd').format(toDate);
+
+    try {
+      final res = await ApiService.fetchCashFlow(startDate: startStr, endDate: endStr);
+      if (res['success'] == true) {
+        final summary = res['summary'] as Map<String, dynamic>? ?? {};
+        final oCash = (summary['openingCash'] as num?)?.toDouble() ?? 0.0;
+        final mIn = (summary['moneyIn'] as num?)?.toDouble() ?? 0.0;
+        final mOut = (summary['moneyOut'] as num?)?.toDouble() ?? 0.0;
+
+        final inRaw = res['moneyInTransactions'] as List? ?? [];
+        final outRaw = res['moneyOutTransactions'] as List? ?? [];
+
+        final inTxns = <CashTxn>[];
+        for (final r in inRaw) {
+          final amt = (r['amount'] as num?)?.toDouble() ?? 0.0;
+          if (!showZeroValueTxns && amt == 0.0) continue;
+          inTxns.add(CashTxn(
+            name: r['name']?.toString() ?? 'Unknown',
+            date: DateTime.tryParse(r['date']?.toString() ?? '') ?? DateTime.now(),
+            txnType: r['txnType']?.toString() ?? 'Payment In',
+            amount: amt,
+          ));
+        }
+
+        final outTxns = <CashTxn>[];
+        for (final r in outRaw) {
+          final amt = (r['amount'] as num?)?.toDouble() ?? 0.0;
+          if (!showZeroValueTxns && amt == 0.0) continue;
+          outTxns.add(CashTxn(
+            name: r['name']?.toString() ?? 'Unknown',
+            date: DateTime.tryParse(r['date']?.toString() ?? '') ?? DateTime.now(),
+            txnType: r['txnType']?.toString() ?? 'Payment Out',
+            amount: amt,
+          ));
+        }
+
+        if (mounted) {
+          setState(() {
+            openingCash = oCash;
+            moneyIn = mIn;
+            moneyOut = mOut;
+            moneyInTxns = inTxns;
+            moneyOutTxns = outTxns;
+            _isLoading = false;
+          });
+        }
+      } else {
+        if (mounted) setState(() => _isLoading = false);
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -69,7 +129,7 @@ class _CashflowReportScreenState extends State<CashflowReportScreen> with Single
             primary: JoynColors.primary,
             surface: JoynColors.iconBackground,
           ),
-          dialogBackgroundColor: JoynColors.background,
+          dialogTheme: const DialogThemeData(backgroundColor: JoynColors.background),
         ),
         child: child!,
       ),
@@ -80,6 +140,7 @@ class _CashflowReportScreenState extends State<CashflowReportScreen> with Single
         toDate = picked.end;
         selectedPeriod = 'Custom';
       });
+      _fetchCashFlow();
     }
   }
 
@@ -134,7 +195,31 @@ class _CashflowReportScreenState extends State<CashflowReportScreen> with Single
         ),
       ),
     );
-    if (result != null) setState(() => selectedPeriod = result);
+    if (result != null) {
+      final now = DateTime.now();
+      setState(() {
+        selectedPeriod = result;
+        if (result == 'Today') {
+          fromDate = DateTime(now.year, now.month, now.day);
+          toDate = DateTime(now.year, now.month, now.day);
+        } else if (result == 'This Week') {
+          final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
+          fromDate = DateTime(startOfWeek.year, startOfWeek.month, startOfWeek.day);
+          toDate = DateTime(now.year, now.month, now.day);
+        } else if (result == 'This Month') {
+          fromDate = DateTime(now.year, now.month, 1);
+          toDate = DateTime(now.year, now.month + 1, 0);
+        } else if (result == 'This Year') {
+          fromDate = DateTime(now.year, 1, 1);
+          toDate = DateTime(now.year, 12, 31);
+        }
+      });
+      if (result == 'Custom') {
+        _pickDateRange();
+      } else {
+        _fetchCashFlow();
+      }
+    }
   }
 
   void _openFiltersSheet() async {
@@ -255,6 +340,7 @@ class _CashflowReportScreenState extends State<CashflowReportScreen> with Single
         showZeroValueTxns = result['showZero']!;
         considerOpeningClosingCash = result['consider']!;
       });
+      _fetchCashFlow();
     }
   }
 
@@ -339,14 +425,14 @@ class _CashflowReportScreenState extends State<CashflowReportScreen> with Single
             label: 'Pdf',
             icon: Icons.picture_as_pdf_rounded,
             color: const Color(0xFFDC2626),
-            onTap: () => _showSnackBar('Exporting PDF...'),
+            onTap: _exportRealPdf,
           ),
           const SizedBox(width: 6),
           _buildAppBarIconButton(
             label: 'xls',
             icon: Icons.grid_on_rounded,
             color: JoynColors.success,
-            onTap: () => _showSnackBar('Exporting Excel...'),
+            onTap: _exportRealExcel,
           ),
           const SizedBox(width: 16),
         ],
@@ -362,31 +448,37 @@ class _CashflowReportScreenState extends State<CashflowReportScreen> with Single
           _buildTabBar(),
           _buildTableHeader(),
           Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                _TxnListView(
-                  txns: moneyInTxns,
-                  amountColor: JoynColors.success,
-                  totalLabel: 'Total Money In',
-                  totalValue: moneyInTxns.fold(0.0, (s, t) => s + t.amount),
-                  totalPrefix: '+',
-                  totalColor: const Color(0xFF4ADE80),
-                  currency: currency,
-                  isMoneyIn: true,
-                ),
-                _TxnListView(
-                  txns: moneyOutTxns,
-                  amountColor: JoynColors.error,
-                  totalLabel: 'Total Money Out',
-                  totalValue: moneyOutTxns.fold(0.0, (s, t) => s + t.amount),
-                  totalPrefix: '-',
-                  totalColor: const Color(0xFFF87171),
-                  currency: currency,
-                  isMoneyIn: false,
-                ),
-              ],
-            ),
+            child: _isLoading
+                ? const Center(
+                    child: CircularProgressIndicator(color: JoynColors.primary),
+                  )
+                : TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _TxnListView(
+                        txns: moneyInTxns,
+                        amountColor: JoynColors.success,
+                        totalLabel: 'Total Money In',
+                        totalValue: moneyInTxns.fold(0.0, (s, t) => s + t.amount),
+                        totalPrefix: '+',
+                        totalColor: const Color(0xFF4ADE80),
+                        currency: currency,
+                        isMoneyIn: true,
+                        closingCash: closingCash,
+                      ),
+                      _TxnListView(
+                        txns: moneyOutTxns,
+                        amountColor: JoynColors.error,
+                        totalLabel: 'Total Money Out',
+                        totalValue: moneyOutTxns.fold(0.0, (s, t) => s + t.amount),
+                        totalPrefix: '-',
+                        totalColor: const Color(0xFFF87171),
+                        currency: currency,
+                        isMoneyIn: false,
+                        closingCash: closingCash,
+                      ),
+                    ],
+                  ),
           ),
         ],
       ),
@@ -622,20 +714,25 @@ class _CashflowReportScreenState extends State<CashflowReportScreen> with Single
           const SizedBox(height: 16),
           Container(height: 1, color: Colors.white24),
           const SizedBox(height: 14),
-          // Cash Flow Breakdown
+          // Cash Flow Breakdown (Opening + Money In - Money Out = Closing Cash)
           Row(
             children: [
               _buildCashFlowItem('Opening', openingCash, Colors.white, currency),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Text('+', style: TextStyle(color: Colors.white54, fontSize: 18)),
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Text('+', style: TextStyle(color: Colors.white54, fontSize: 14, fontWeight: FontWeight.bold)),
               ),
               _buildCashFlowItem('Money In', moneyIn, const Color(0xFF4ADE80), currency),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Text('-', style: TextStyle(color: Colors.white54, fontSize: 18)),
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Text('-', style: TextStyle(color: Colors.white54, fontSize: 14, fontWeight: FontWeight.bold)),
               ),
               _buildCashFlowItem('Money Out', moneyOut, const Color(0xFFF87171), currency),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Text('=', style: TextStyle(color: Colors.white54, fontSize: 14, fontWeight: FontWeight.bold)),
+              ),
+              _buildCashFlowItem('Closing Cash', closingCash, const Color(0xFF60A5FA), currency),
             ],
           ),
         ],
@@ -807,6 +904,93 @@ class _CashflowReportScreenState extends State<CashflowReportScreen> with Single
     );
   }
 
+  Future<void> _exportRealPdf() async {
+    final dateFmt = DateFormat('dd/MM/yyyy');
+    final periodStr = '${dateFmt.format(fromDate)} - ${dateFmt.format(toDate)}';
+    final currency = NumberFormat('#,##,##0.00', 'en_IN');
+
+    final tableHeaders = ['Date', 'Direction', 'Party / Name', 'Txn Type', 'Amount'];
+    final tableRows = <List<String>>[];
+
+    for (final t in moneyInTxns) {
+      tableRows.add([
+        dateFmt.format(t.date),
+        'Money IN',
+        t.name,
+        t.txnType,
+        '+₹ ${currency.format(t.amount)}',
+      ]);
+    }
+    for (final t in moneyOutTxns) {
+      tableRows.add([
+        dateFmt.format(t.date),
+        'Money OUT',
+        t.name,
+        t.txnType,
+        '-₹ ${currency.format(t.amount)}',
+      ]);
+    }
+
+    final summary = {
+      'Opening Cash': '₹ ${currency.format(openingCash)}',
+      'Total Money In': '₹ ${currency.format(moneyIn)}',
+      'Total Money Out': '₹ ${currency.format(moneyOut)}',
+      'Closing Cash': '₹ ${currency.format(closingCash)}',
+    };
+
+    await ReportExportService.showPdfOptionsSheet(
+      context: context,
+      title: 'Cash Flow Report',
+      periodLabel: periodStr,
+      summaryStats: summary,
+      tableHeaders: tableHeaders,
+      tableRows: tableRows,
+    );
+  }
+
+  Future<void> _exportRealExcel() async {
+    final dateFmt = DateFormat('dd/MM/yyyy');
+    final periodStr = '${dateFmt.format(fromDate)} - ${dateFmt.format(toDate)}';
+
+    final tableHeaders = ['Date', 'Direction', 'Party / Name', 'Txn Type', 'Amount (INR)'];
+    final tableRows = <List<String>>[];
+
+    for (final t in moneyInTxns) {
+      tableRows.add([
+        dateFmt.format(t.date),
+        'Money IN',
+        t.name,
+        t.txnType,
+        t.amount.toStringAsFixed(2),
+      ]);
+    }
+    for (final t in moneyOutTxns) {
+      tableRows.add([
+        dateFmt.format(t.date),
+        'Money OUT',
+        t.name,
+        t.txnType,
+        (-t.amount).toStringAsFixed(2),
+      ]);
+    }
+
+    final summary = {
+      'Opening Cash': openingCash.toStringAsFixed(2),
+      'Total Money In': moneyIn.toStringAsFixed(2),
+      'Total Money Out': moneyOut.toStringAsFixed(2),
+      'Closing Cash': closingCash.toStringAsFixed(2),
+    };
+
+    await ReportExportService.showExcelOptionsSheet(
+      context: context,
+      title: 'Cash Flow Report',
+      periodLabel: periodStr,
+      summaryStats: summary,
+      tableHeaders: tableHeaders,
+      tableRows: tableRows,
+    );
+  }
+
   void _showSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -833,6 +1017,7 @@ class _TxnListView extends StatelessWidget {
   final Color totalColor;
   final NumberFormat currency;
   final bool isMoneyIn;
+  final double? closingCash;
 
   const _TxnListView({
     required this.txns,
@@ -843,6 +1028,7 @@ class _TxnListView extends StatelessWidget {
     required this.totalColor,
     required this.currency,
     required this.isMoneyIn,
+    this.closingCash,
   });
 
   @override
@@ -1052,12 +1238,29 @@ class _TxnListView extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                totalLabel,
-                style: JoynTypography.bodyMedium.copyWith(
-                  color: Colors.white70,
-                  fontSize: 13,
-                ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    totalLabel,
+                    style: JoynTypography.bodyMedium.copyWith(
+                      color: Colors.white70,
+                      fontSize: 12,
+                    ),
+                  ),
+                  if (closingCash != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      'Closing Cash: ₹ ${currency.format(closingCash)}',
+                      style: JoynTypography.caption.copyWith(
+                        color: const Color(0xFF60A5FA),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ],
               ),
               Text(
                 '$totalPrefix ₹ ${currency.format(totalValue)}',

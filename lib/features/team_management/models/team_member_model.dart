@@ -1,5 +1,3 @@
-import 'package:flutter/material.dart';
-
 class RoleModel {
   final String id;
   final String name;
@@ -120,18 +118,32 @@ class TeamMemberModel {
     };
   }
 
+  static bool _parseBool(dynamic val, {bool defaultValue = true}) {
+    if (val == null) return defaultValue;
+    if (val is bool) return val;
+    if (val is num) return val == 1;
+    if (val is String) {
+      final s = val.toLowerCase().trim();
+      if (s == 'true' || s == '1' || s == 'active') return true;
+      if (s == 'false' || s == '0' || s == 'inactive' || s == 'disabled') return false;
+    }
+    return defaultValue;
+  }
+
   factory TeamMemberModel.fromDb(Map<String, dynamic> map) {
     return TeamMemberModel(
-      id: map['id'] as String,
-      name: map['name'] as String,
-      phone: map['phone'] as String? ?? '',
-      email: map['email'] as String? ?? '',
-      roleId: map['roleId'] as String? ?? '',
-      roleName: map['roleName'] as String? ?? '',
-      isActive: (map['isActive'] ?? 1) == 1,
-      photoPath: map['photoPath'] as String?,
-      lastLoginTime: map['lastLoginTime'] != null ? DateTime.parse(map['lastLoginTime'] as String) : null,
-      createdAt: DateTime.parse(map['createdAt'] as String? ?? DateTime.now().toIso8601String()),
+      id: map['id']?.toString() ?? '',
+      name: map['name']?.toString() ?? '',
+      phone: map['phone']?.toString() ?? '',
+      email: map['email']?.toString() ?? '',
+      roleId: map['roleId']?.toString() ?? map['role_id']?.toString() ?? '',
+      roleName: map['roleName']?.toString() ?? map['role_name']?.toString() ?? 'Staff',
+      isActive: _parseBool(map['isActive'] ?? map['is_active']),
+      photoPath: (map['photoPath'] ?? map['photo_url'])?.toString(),
+      lastLoginTime: map['lastLoginTime'] != null
+          ? DateTime.tryParse(map['lastLoginTime'].toString())
+          : (map['last_login_at'] != null ? DateTime.tryParse(map['last_login_at'].toString()) : null),
+      createdAt: DateTime.tryParse(map['createdAt']?.toString() ?? map['created_at']?.toString() ?? '') ?? DateTime.now(),
     );
   }
 

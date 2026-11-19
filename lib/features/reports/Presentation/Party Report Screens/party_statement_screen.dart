@@ -3,7 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:joyn/core/theme/joyn_typography.dart';
 import 'package:joyn/core/theme/joyn_colors.dart';
-import 'package:joyn/core/widgets/Premium_widget.dart';
+import 'package:joyn/core/services/api_service.dart';
+import 'package:joyn/core/services/report_export_service.dart';
+import 'package:joyn/features/orders/data/sales_repository.dart';
 
 class LedgerEntry {
   final DateTime date;
@@ -28,37 +30,120 @@ class PartyStatementScreen extends StatefulWidget {
 
 class _PartyStatementScreenState extends State<PartyStatementScreen> {
   String selectedPeriod = 'This Month';
-  DateTime fromDate = DateTime(2026, 9, 1);
-  DateTime toDate = DateTime(2026, 9, 30);
+  DateTime fromDate = DateTime.now();
+  DateTime toDate = DateTime.now();
 
   String selectedTheme = 'Joyn View';
   String? selectedParty;
+  String? selectedPartyId;
   bool _isLoading = false;
 
-  final List<String> parties = ['gill', 'Gopal'];
+  List<Map<String, dynamic>> parties = [];
+  List<LedgerEntry> currentLedger = [];
 
-  final Map<String, List<LedgerEntry>> ledgers = {
-    'Gopal': [
-      LedgerEntry(date: DateTime(2026, 9, 1), type: 'Opening Balance', debit: 0, credit: 0),
-      LedgerEntry(date: DateTime(2026, 9, 5), type: 'Sale', debit: 1000.00),
-      LedgerEntry(date: DateTime(2026, 9, 5), type: 'Payment In', credit: 500.00),
-    ],
-    'gill': [
-      LedgerEntry(date: DateTime(2026, 9, 1), type: 'Opening Balance', debit: 0, credit: 0),
-      LedgerEntry(date: DateTime(2026, 9, 5), type: 'Sale', debit: 100.00),
-    ],
-  };
+  double totalSale = 0.0;
+  double totalPayment = 0.0;
+  double closingBalance = 0.0;
 
-  List<LedgerEntry> get currentLedger => ledgers[selectedParty] ?? [];
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    fromDate = DateTime(now.year, now.month, 1);
+    toDate = DateTime(now.year, now.month + 1, 0);
+    _loadParties();
+  }
 
-  double get totalSale =>
-      currentLedger.where((e) => e.type == 'Sale').fold(0.0, (s, e) => s + e.debit);
+  Future<void> _loadParties() async {
+    setState(() => _isLoading = true);
+    try {
+      // 1. Instant local load
+      final localParties = await SalesRepository().getParties();
+      if (localParties.isNotEmpty && mounted) {
+        setState(() {
+          parties = localParties.map((p) => {
+            'id': p.id,
+            'name': p.name,
+            'contactNumber': p.contactNumber,
+            'partyType': p.partyType,
+          }).toList();
+          selectedParty = parties[0]['name']?.toString();
+          selectedPartyId = parties[0]['id']?.toString();
+        });
+      }
 
-  double get totalPayment =>
-      currentLedger.where((e) => e.type != 'Sale').fold(0.0, (s, e) => s + e.credit);
+      // 2. Fetch from backend API
+      final res = await ApiService.fetchParties();
+      if (res['success'] == true) {
+        final rawList = (res['data'] ?? res['parties']) as List? ?? [];
+        final mappedParties = rawList.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        if (mounted && mappedParties.isNotEmpty) {
+          setState(() {
+            parties = mappedParties;
+            if (selectedPartyId == null || !parties.any((p) => p['id']?.toString() == selectedPartyId)) {
+              selectedParty = parties[0]['name']?.toString();
+              selectedPartyId = parties[0]['id']?.toString();
+            }
+          });
+        }
+      }
 
-  double get closingBalance =>
-      currentLedger.fold(0.0, (s, e) => s + e.debit - e.credit);
+      if (selectedPartyId != null && selectedPartyId!.isNotEmpty) {
+        await _fetchPartyStatement();
+      } else {
+        if (mounted) setState(() => _isLoading = false);
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _fetchPartyStatement() async {
+    if (selectedPartyId == null) return;
+    setState(() => _isLoading = true);
+    final startStr = DateFormat('yyyy-MM-dd').format(fromDate);
+    final endStr = DateFormat('yyyy-MM-dd').format(toDate);
+
+    try {
+      final res = await ApiService.fetchPartyStatement(
+        partyId: selectedPartyId!,
+        startDate: startStr,
+        endDate: endStr,
+      );
+      if (res['success'] == true) {
+        final summary = res['summary'] as Map<String, dynamic>? ?? {};
+        final rawLedger = res['ledger'] as List? ?? [];
+
+        final entries = <LedgerEntry>[];
+        for (final r in rawLedger) {
+          entries.add(LedgerEntry(
+            date: DateTime.tryParse(r['date']?.toString() ?? '') ?? DateTime.now(),
+            type: r['type']?.toString() ?? '',
+            debit: (r['debit'] as num?)?.toDouble() ?? 0.0,
+            credit: (r['credit'] as num?)?.toDouble() ?? 0.0,
+          ));
+        }
+
+        final tDebit = (summary['totalDebit'] as num?)?.toDouble() ?? 0.0;
+        final tCredit = (summary['totalCredit'] as num?)?.toDouble() ?? 0.0;
+        final netBal = (summary['netBalance'] as num?)?.toDouble() ?? 0.0;
+
+        if (mounted) {
+          setState(() {
+            currentLedger = entries;
+            totalSale = tDebit;
+            totalPayment = tCredit;
+            closingBalance = netBal;
+            _isLoading = false;
+          });
+        }
+      } else {
+        if (mounted) setState(() => _isLoading = false);
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
 
   Future<void> _pickDateRange() async {
     HapticFeedback.lightImpact();
@@ -73,7 +158,7 @@ class _PartyStatementScreenState extends State<PartyStatementScreen> {
             primary: JoynColors.primary,
             surface: JoynColors.iconBackground,
           ),
-          dialogBackgroundColor: JoynColors.background,
+          dialogTheme: const DialogThemeData(backgroundColor: JoynColors.background),
         ),
         child: child!,
       ),
@@ -83,10 +168,8 @@ class _PartyStatementScreenState extends State<PartyStatementScreen> {
         fromDate = picked.start;
         toDate = picked.end;
         selectedPeriod = 'Custom';
-        _isLoading = true;
       });
-      await Future.delayed(const Duration(milliseconds: 500));
-      if (mounted) setState(() => _isLoading = false);
+      _fetchPartyStatement();
     }
   }
 
@@ -141,12 +224,36 @@ class _PartyStatementScreenState extends State<PartyStatementScreen> {
         ),
       ),
     );
-    if (result != null) setState(() => selectedPeriod = result);
+    if (result != null) {
+      final now = DateTime.now();
+      setState(() {
+        selectedPeriod = result;
+        if (result == 'Today') {
+          fromDate = DateTime(now.year, now.month, now.day);
+          toDate = DateTime(now.year, now.month, now.day);
+        } else if (result == 'This Week') {
+          final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
+          fromDate = DateTime(startOfWeek.year, startOfWeek.month, startOfWeek.day);
+          toDate = DateTime(now.year, now.month, now.day);
+        } else if (result == 'This Month') {
+          fromDate = DateTime(now.year, now.month, 1);
+          toDate = DateTime(now.year, now.month + 1, 0);
+        } else if (result == 'This Year') {
+          fromDate = DateTime(now.year, 1, 1);
+          toDate = DateTime(now.year, 12, 31);
+        }
+      });
+      if (result == 'Custom') {
+        _pickDateRange();
+      } else {
+        _fetchPartyStatement();
+      }
+    }
   }
 
   Future<void> _pickParty() async {
     HapticFeedback.selectionClick();
-    final result = await showModalBottomSheet<String>(
+    final result = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       backgroundColor: JoynColors.background,
       shape: const RoundedRectangleBorder(
@@ -174,27 +281,59 @@ class _PartyStatementScreenState extends State<PartyStatementScreen> {
                   fontWeight: FontWeight.w700,
                 ),
               ),
-              const SizedBox(height: 4),
-              ...parties.map(
-                    (p) => ListTile(
-                  title: Text(
-                    p,
-                    style: JoynTypography.bodyLarge.copyWith(
-                      fontWeight: p == selectedParty ? FontWeight.w700 : FontWeight.w500,
-                    ),
+              const SizedBox(height: 8),
+              if (parties.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Text('No parties found', style: TextStyle(color: JoynColors.secondaryText)),
+                )
+              else
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: parties.length,
+                    itemBuilder: (context, idx) {
+                      final p = parties[idx];
+                      final name = p['name']?.toString() ?? 'Party #${p['id']}';
+                      final isSelected = p['id']?.toString() == selectedPartyId;
+                      return ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: JoynColors.surfaceMuted,
+                          child: Text(
+                            name.isNotEmpty ? name[0].toUpperCase() : '?',
+                            style: const TextStyle(fontWeight: FontWeight.bold, color: JoynColors.primary),
+                          ),
+                        ),
+                        title: Text(
+                          name,
+                          style: JoynTypography.bodyLarge.copyWith(
+                            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                          ),
+                        ),
+                        subtitle: Text(
+                          p['contact_number']?.toString() ?? p['party_type']?.toString() ?? '',
+                          style: JoynTypography.caption.copyWith(color: JoynColors.secondaryText),
+                        ),
+                        trailing: isSelected
+                            ? const Icon(Icons.check_rounded, color: JoynColors.primary, size: 20)
+                            : null,
+                        onTap: () => Navigator.pop(context, p),
+                      );
+                    },
                   ),
-                  trailing: p == selectedParty
-                      ? const Icon(Icons.check_rounded, color: JoynColors.primary, size: 20)
-                      : null,
-                  onTap: () => Navigator.pop(context, p),
                 ),
-              ),
             ],
           ),
         ),
       ),
     );
-    if (result != null) setState(() => selectedParty = result);
+    if (result != null) {
+      setState(() {
+        selectedParty = result['name']?.toString();
+        selectedPartyId = result['id']?.toString();
+      });
+      _fetchPartyStatement();
+    }
   }
 
   void _openFiltersSheet() async {
@@ -358,20 +497,20 @@ class _PartyStatementScreenState extends State<PartyStatementScreen> {
           IconButton(
             icon: const Icon(Icons.ios_share_rounded, color: JoynColors.primary),
             tooltip: 'Share',
-            onPressed: () => _showSnackBar('Sharing statement...'),
+            onPressed: _exportRealPdf,
           ),
           _buildAppBarIconButton(
             label: 'Pdf',
             icon: Icons.picture_as_pdf_rounded,
             color: const Color(0xFFDC2626),
-            onTap: () => _showSnackBar('Exporting PDF...'),
+            onTap: _exportRealPdf,
           ),
           const SizedBox(width: 6),
           _buildAppBarIconButton(
             label: 'xls',
             icon: Icons.grid_on_rounded,
             color: JoynColors.success,
-            onTap: () => _showSnackBar('Exporting Excel...'),
+            onTap: _exportRealExcel,
           ),
           const SizedBox(width: 16),
         ],
@@ -924,19 +1063,74 @@ class _PartyStatementScreenState extends State<PartyStatementScreen> {
     );
   }
 
-  void _showSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          message,
-          style: JoynTypography.bodyMedium.copyWith(color: Colors.white),
-        ),
-        backgroundColor: JoynColors.primary,
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.all(16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        duration: const Duration(milliseconds: 1500),
-      ),
+  Future<void> _exportRealPdf() async {
+    final partyName = selectedParty ?? 'All Parties';
+    final dateFmt = DateFormat('dd/MM/yyyy');
+    final periodStr = '${dateFmt.format(fromDate)} - ${dateFmt.format(toDate)}';
+    final currency = NumberFormat('#,##,##0.00', 'en_IN');
+
+    final tableHeaders = ['Date', 'Txn Type', 'Debit (+)', 'Credit (-)', 'Running Balance'];
+    double runningBal = 0.0;
+    final tableRows = currentLedger.map((entry) {
+      runningBal += (entry.debit - entry.credit);
+      return [
+        dateFmt.format(entry.date),
+        entry.type,
+        entry.debit > 0 ? '₹${currency.format(entry.debit)}' : '-',
+        entry.credit > 0 ? '₹${currency.format(entry.credit)}' : '-',
+        '₹${currency.format(runningBal)}',
+      ];
+    }).toList();
+
+    final summary = {
+      'Party Name': partyName,
+      'Total Sales / Debit': '₹${currency.format(totalSale)}',
+      'Total Payment / Credit': '₹${currency.format(totalPayment)}',
+      'Closing Balance': '₹${currency.format(closingBalance)}',
+    };
+
+    await ReportExportService.showPdfOptionsSheet(
+      context: context,
+      title: 'Party Statement - $partyName',
+      periodLabel: periodStr,
+      summaryStats: summary,
+      tableHeaders: tableHeaders,
+      tableRows: tableRows,
+    );
+  }
+
+  Future<void> _exportRealExcel() async {
+    final partyName = selectedParty ?? 'All Parties';
+    final dateFmt = DateFormat('dd/MM/yyyy');
+    final periodStr = '${dateFmt.format(fromDate)} - ${dateFmt.format(toDate)}';
+
+    final tableHeaders = ['Date', 'Txn Type', 'Debit (INR)', 'Credit (INR)', 'Balance (INR)'];
+    double runningBal = 0.0;
+    final tableRows = currentLedger.map((entry) {
+      runningBal += (entry.debit - entry.credit);
+      return [
+        dateFmt.format(entry.date),
+        entry.type,
+        entry.debit > 0 ? entry.debit.toStringAsFixed(2) : '0.00',
+        entry.credit > 0 ? entry.credit.toStringAsFixed(2) : '0.00',
+        runningBal.toStringAsFixed(2),
+      ];
+    }).toList();
+
+    final summary = {
+      'Party Name': partyName,
+      'Total Sales / Debit': totalSale.toStringAsFixed(2),
+      'Total Payment / Credit': totalPayment.toStringAsFixed(2),
+      'Closing Balance': closingBalance.toStringAsFixed(2),
+    };
+
+    await ReportExportService.showExcelOptionsSheet(
+      context: context,
+      title: 'Party Statement - $partyName',
+      periodLabel: periodStr,
+      summaryStats: summary,
+      tableHeaders: tableHeaders,
+      tableRows: tableRows,
     );
   }
 }

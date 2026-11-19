@@ -37,6 +37,8 @@ class LocalStorageService {
 
   LocalStorageService._();
 
+  factory LocalStorageService() => _instance ??= LocalStorageService._();
+
   static Future<LocalStorageService> getInstance() async {
     _instance ??= LocalStorageService._();
     _prefs ??= await SharedPreferences.getInstance();
@@ -75,6 +77,10 @@ class LocalStorageService {
   List<String> get businessesList =>
       _prefs?.getStringList(_keyBusinessesList) ?? [];
 
+  Future<void> setBusinessesList(List<String> list) async {
+    await _prefs?.setStringList(_keyBusinessesList, list);
+  }
+
   Future<void> addBusiness(String name) async {
     if (name.isEmpty) return;
     final current = businessesList;
@@ -82,6 +88,13 @@ class LocalStorageService {
       current.add(name);
       await _prefs?.setStringList(_keyBusinessesList, current);
     }
+  }
+
+  Future<void> clearUserSession() async {
+    await _prefs?.remove(_keyBusinessesList);
+    await _prefs?.remove(_keyBusinessName);
+    await _prefs?.remove(_keyUserName);
+    await _prefs?.remove(_keyEmail);
   }
 
   // Business Profile Properties

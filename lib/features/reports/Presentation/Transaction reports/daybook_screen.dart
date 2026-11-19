@@ -3,7 +3,14 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:joyn/core/theme/joyn_typography.dart';
 import 'package:joyn/core/theme/joyn_colors.dart';
-import 'package:joyn/core/widgets/Premium_widget.dart';
+import 'package:joyn/core/services/api_service.dart';
+import 'package:joyn/core/services/report_export_service.dart';
+import 'package:joyn/features/orders/presentation/add_sale_order_screen.dart';
+import 'package:joyn/features/orders/presentation/add_purchase_order_screen.dart';
+import 'package:joyn/features/reports/Presentation/expenses/manage_expenses_screen.dart';
+import 'package:joyn/features/Inventory/presentation/payment_in_screen.dart';
+import 'package:joyn/features/orders/data/sales_repository.dart';
+import 'package:joyn/features/orders/models/sales_models.dart';
 
 class DayBookScreen extends StatefulWidget {
   const DayBookScreen({super.key});
@@ -14,7 +21,84 @@ class DayBookScreen extends StatefulWidget {
 
 class _DayBookScreenState extends State<DayBookScreen> {
   DateTime selectedDate = DateTime.now();
-  bool _isLoading = false;
+  bool _isLoading = true;
+
+  double _totalSales = 0.0;
+  double _totalPurchases = 0.0;
+  double _totalExpenses = 0.0;
+  double _netCashFlow = 0.0;
+  List<Map<String, dynamic>> _transactions = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchDayBook();
+  }
+
+  Future<void> _fetchDayBook() async {
+    setState(() => _isLoading = true);
+    final dateStr = DateFormat('yyyy-MM-dd').format(selectedDate);
+    try {
+      final res = await ApiService.fetchDayBook(date: dateStr);
+      if (res['success'] == true && ((res['transactions'] as List?)?.isNotEmpty ?? false)) {
+        final summary = res['summary'] as Map<String, dynamic>? ?? {};
+        final list = (res['transactions'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+        if (mounted) {
+          setState(() {
+            _totalSales = (summary['totalSales'] as num?)?.toDouble() ?? 0.0;
+            _totalPurchases = (summary['totalPurchases'] as num?)?.toDouble() ?? 0.0;
+            _totalExpenses = (summary['totalExpenses'] as num?)?.toDouble() ?? 0.0;
+            _netCashFlow = (summary['netCashFlow'] as num?)?.toDouble() ?? 0.0;
+            _transactions = list;
+            _isLoading = false;
+          });
+        }
+      } else {
+        await _fetchLocalDayBook(dateStr);
+      }
+    } catch (e) {
+      await _fetchLocalDayBook(dateStr);
+    }
+  }
+
+  Future<void> _fetchLocalDayBook(String dateStr) async {
+    try {
+      final repo = SalesRepository();
+      final allSales = await repo.getSaleOrders();
+      final daySales = allSales.where((s) {
+        final d = s.date.trim();
+        return d.startsWith(dateStr) || d == dateStr;
+      }).toList();
+
+      double salesSum = 0.0;
+      final txs = <Map<String, dynamic>>[];
+      for (final s in daySales) {
+        salesSum += s.totalAmount;
+        txs.add({
+          'type': 'SALE',
+          'title': 'Sale Invoice #${s.invoiceNo}',
+          'subtitle': s.customerName.isNotEmpty ? s.customerName : 'Walk-in Customer',
+          'partyName': s.customerName,
+          'amount': s.totalAmount,
+          'isPositive': true,
+          'timestamp': s.createdAt.toIso8601String(),
+        });
+      }
+
+      if (mounted) {
+        setState(() {
+          _totalSales = salesSum;
+          _totalPurchases = 0.0;
+          _totalExpenses = 0.0;
+          _netCashFlow = salesSum;
+          _transactions = txs;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
 
   Future<void> _pickDate() async {
     HapticFeedback.lightImpact();
@@ -29,7 +113,7 @@ class _DayBookScreenState extends State<DayBookScreen> {
             primary: JoynColors.primary,
             surface: JoynColors.iconBackground,
           ),
-          dialogBackgroundColor: JoynColors.background,
+          dialogTheme: const DialogThemeData(backgroundColor: JoynColors.background),
         ),
         child: child!,
       ),
@@ -37,13 +121,8 @@ class _DayBookScreenState extends State<DayBookScreen> {
     if (picked != null && picked != selectedDate) {
       setState(() {
         selectedDate = picked;
-        _isLoading = true;
       });
-      // Simulate data loading
-      await Future.delayed(const Duration(milliseconds: 500));
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      _fetchDayBook();
     }
   }
 
@@ -75,17 +154,24 @@ class _DayBookScreenState extends State<DayBookScreen> {
         ),
         actions: [
           _buildAppBarIconButton(
+            label: 'Add',
+            icon: Icons.add_circle_outline_rounded,
+            color: JoynColors.primary,
+            onTap: () => _showAddRecordModal(context),
+          ),
+          const SizedBox(width: 6),
+          _buildAppBarIconButton(
             label: 'Pdf',
             icon: Icons.picture_as_pdf_rounded,
             color: const Color(0xFFDC2626),
-            onTap: () => _showSnackBar('Exporting PDF...'),
+            onTap: _exportPdf,
           ),
           const SizedBox(width: 6),
           _buildAppBarIconButton(
             label: 'xls',
             icon: Icons.grid_on_rounded,
             color: JoynColors.success,
-            onTap: () => _showSnackBar('Exporting Excel...'),
+            onTap: _exportExcel,
           ),
           const SizedBox(width: 16),
         ],
@@ -95,13 +181,23 @@ class _DayBookScreenState extends State<DayBookScreen> {
           _buildDateSelector(dateText, dayName, isToday),
           const SizedBox(height: 16),
           _buildSummaryStrip(),
-          const SizedBox(height: 4),
+          const SizedBox(height: 8),
           Expanded(
             child: _isLoading
                 ? const Center(
-              child: CircularProgressIndicator(color: JoynColors.primary),
-            )
-                : _buildEmptyState(),
+                    child: CircularProgressIndicator(color: JoynColors.primary),
+                  )
+                : _transactions.isEmpty
+                    ? _buildEmptyState()
+                    : RefreshIndicator(
+                        onRefresh: _fetchDayBook,
+                        color: JoynColors.primary,
+                        child: ListView.builder(
+                          padding: const EdgeInsets.only(top: 4, bottom: 20),
+                          itemCount: _transactions.length,
+                          itemBuilder: (context, index) => _buildTransactionTile(_transactions[index]),
+                        ),
+                      ),
           ),
         ],
       ),
@@ -255,7 +351,7 @@ class _DayBookScreenState extends State<DayBookScreen> {
             child: _buildSummaryItem(
               icon: Icons.shopping_cart_rounded,
               label: 'Sales',
-              value: '₹0.00',
+              value: '₹${_totalSales.toStringAsFixed(2)}',
             ),
           ),
           Container(width: 1, height: 40, color: Colors.white24),
@@ -263,7 +359,7 @@ class _DayBookScreenState extends State<DayBookScreen> {
             child: _buildSummaryItem(
               icon: Icons.receipt_rounded,
               label: 'Purchases',
-              value: '₹0.00',
+              value: '₹${_totalPurchases.toStringAsFixed(2)}',
             ),
           ),
           Container(width: 1, height: 40, color: Colors.white24),
@@ -271,9 +367,125 @@ class _DayBookScreenState extends State<DayBookScreen> {
             child: _buildSummaryItem(
               icon: Icons.payments_rounded,
               label: 'Expenses',
-              value: '₹0.00',
+              value: '₹${_totalExpenses.toStringAsFixed(2)}',
               valueColor: const Color(0xFFFFB86B),
             ),
+          ),
+          Container(width: 1, height: 40, color: Colors.white24),
+          Expanded(
+            child: _buildSummaryItem(
+              icon: Icons.account_balance_wallet_rounded,
+              label: 'Net Cash',
+              value: '₹${_netCashFlow.toStringAsFixed(2)}',
+              valueColor: _netCashFlow >= 0 ? const Color(0xFF4ADE80) : const Color(0xFFF87171),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTransactionTile(Map<String, dynamic> item) {
+    final type = item['type']?.toString() ?? 'Sale';
+    final title = item['title']?.toString() ?? 'Transaction';
+    final subtitle = item['subtitle']?.toString() ?? '';
+    final partyName = item['partyName']?.toString() ?? '';
+    final amount = (item['amount'] as num?)?.toDouble() ?? 0.0;
+    final isPositive = item['isPositive'] == true;
+    final timestamp = DateTime.tryParse(item['timestamp']?.toString() ?? '') ?? DateTime.now();
+    final timeStr = DateFormat('hh:mm a').format(timestamp);
+
+    Color badgeColor;
+    IconData badgeIcon;
+    if (type == 'Sale') {
+      badgeColor = JoynColors.primary;
+      badgeIcon = Icons.shopping_bag_outlined;
+    } else if (type == 'Purchase') {
+      badgeColor = Colors.orange;
+      badgeIcon = Icons.inventory_2_outlined;
+    } else if (type == 'PaymentIn') {
+      badgeColor = JoynColors.success;
+      badgeIcon = Icons.arrow_downward_rounded;
+    } else if (type == 'PaymentOut') {
+      badgeColor = Colors.redAccent;
+      badgeIcon = Icons.arrow_upward_rounded;
+    } else {
+      badgeColor = Colors.deepPurple;
+      badgeIcon = Icons.payments_outlined;
+    }
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: JoynColors.border.withValues(alpha: 0.6)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: badgeColor.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(badgeIcon, color: badgeColor, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: JoynTypography.bodyLarge.copyWith(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                    color: JoynColors.primary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle.isNotEmpty ? subtitle : partyName,
+                  style: JoynTypography.caption.copyWith(
+                    color: JoynColors.secondaryText,
+                    fontSize: 12,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '${isPositive ? '+' : '-'}₹${amount.toStringAsFixed(2)}',
+                style: JoynTypography.bodyLarge.copyWith(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 14,
+                  color: isPositive ? JoynColors.success : const Color(0xFFDC2626),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                timeStr,
+                style: JoynTypography.caption.copyWith(
+                  color: JoynColors.secondaryText.withValues(alpha: 0.8),
+                  fontSize: 11,
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -366,7 +578,7 @@ class _DayBookScreenState extends State<DayBookScreen> {
               color: JoynColors.primary,
               borderRadius: BorderRadius.circular(24),
               child: InkWell(
-                onTap: () => _showSnackBar('Add record coming soon!'),
+                onTap: () => _showAddRecordModal(context),
                 borderRadius: BorderRadius.circular(24),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
@@ -388,6 +600,230 @@ class _DayBookScreenState extends State<DayBookScreen> {
                 ),
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showAddRecordModal(BuildContext context) {
+    HapticFeedback.lightImpact();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.black12,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Text(
+                'Record Day Transaction',
+                style: JoynTypography.titleMedium.copyWith(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: JoynColors.primary,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Choose transaction type to record for today',
+                style: JoynTypography.caption.copyWith(
+                  fontSize: 13,
+                  color: JoynColors.secondaryText,
+                ),
+              ),
+              const SizedBox(height: 20),
+              _buildAddRecordTile(
+                icon: Icons.point_of_sale_rounded,
+                iconColor: JoynColors.primary,
+                title: 'Sale Invoice',
+                subtitle: 'Create a new customer invoice / bill',
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const AddSaleOrderScreen()),
+                  );
+                  _fetchDayBook();
+                },
+              ),
+              const SizedBox(height: 10),
+              _buildAddRecordTile(
+                icon: Icons.shopping_cart_checkout_rounded,
+                iconColor: Colors.blue.shade700,
+                title: 'Purchase Bill',
+                subtitle: 'Record supplier purchase or stock entry',
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const AddPurchaseOrderScreen()),
+                  );
+                  _fetchDayBook();
+                },
+              ),
+              const SizedBox(height: 10),
+              _buildAddRecordTile(
+                icon: Icons.receipt_long_rounded,
+                iconColor: Colors.orange.shade800,
+                title: 'Record Expense',
+                subtitle: 'Log operating, utility or general business expenses',
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const ManageExpensesScreen()),
+                  );
+                  _fetchDayBook();
+                },
+              ),
+              const SizedBox(height: 10),
+              _buildAddRecordTile(
+                icon: Icons.call_received_rounded,
+                iconColor: JoynColors.success,
+                title: 'Receive Payment',
+                subtitle: 'Record customer payment or cash receipt',
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  final parties = await SalesRepository().getParties();
+                  PartyModel? selectedParty;
+                  if (parties.isNotEmpty && context.mounted) {
+                    selectedParty = await showModalBottomSheet<PartyModel>(
+                      context: context,
+                      backgroundColor: Colors.white,
+                      shape: const RoundedRectangleBorder(
+                        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                      ),
+                      builder: (c) => SafeArea(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Text(
+                                'Select Party for Payment',
+                                style: JoynTypography.titleMedium.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ),
+                            const Divider(height: 1),
+                            Flexible(
+                              child: ListView.builder(
+                                shrinkWrap: true,
+                                itemCount: parties.length,
+                                itemBuilder: (_, i) => ListTile(
+                                  title: Text(parties[i].name, style: JoynTypography.bodyLarge),
+                                  subtitle: parties[i].contactNumber.isNotEmpty
+                                      ? Text(parties[i].contactNumber)
+                                      : null,
+                                  trailing: const Icon(Icons.chevron_right_rounded),
+                                  onTap: () => Navigator.pop(c, parties[i]),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  } else {
+                    selectedParty = PartyModel(
+                      id: 'walkin',
+                      name: 'Cash Customer',
+                      createdAt: DateTime.now(),
+                    );
+                  }
+
+                  if (selectedParty != null && context.mounted) {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => PaymentInScreen(party: selectedParty!),
+                      ),
+                    );
+                    _fetchDayBook();
+                  }
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildAddRecordTile({
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: iconColor.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: iconColor.withValues(alpha: 0.15)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: iconColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: iconColor, size: 22),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: JoynTypography.bodyLarge.copyWith(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14.5,
+                      color: JoynColors.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: JoynTypography.caption.copyWith(
+                      fontSize: 12,
+                      color: JoynColors.secondaryText,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded, color: JoynColors.secondaryText.withValues(alpha: 0.5)),
           ],
         ),
       ),
@@ -444,6 +880,88 @@ class _DayBookScreenState extends State<DayBookScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Future<void> _exportPdf() async {
+    final dateStr = DateFormat('dd/MM/yyyy').format(selectedDate);
+    final tableHeaders = ['Time', 'Type', 'Title / Party', 'Details', 'Amount'];
+    final tableRows = _transactions.map((item) {
+      final type = item['type']?.toString() ?? 'Sale';
+      final title = item['title']?.toString() ?? 'Transaction';
+      final subtitle = item['subtitle']?.toString() ?? '';
+      final partyName = item['partyName']?.toString() ?? '';
+      final amount = (item['amount'] as num?)?.toDouble() ?? 0.0;
+      final isPositive = item['isPositive'] == true;
+      final timestamp = DateTime.tryParse(item['timestamp']?.toString() ?? '') ?? DateTime.now();
+      final timeStr = DateFormat('hh:mm a').format(timestamp);
+      final partyDisplay = partyName.isNotEmpty ? partyName : title;
+      final sign = isPositive ? '+' : '-';
+      return [
+        timeStr,
+        type,
+        partyDisplay,
+        subtitle,
+        '$sign₹${amount.toStringAsFixed(2)}',
+      ];
+    }).toList();
+
+    final summary = {
+      'Date': dateStr,
+      'Total Sales': '₹${_totalSales.toStringAsFixed(2)}',
+      'Total Purchases': '₹${_totalPurchases.toStringAsFixed(2)}',
+      'Total Expenses': '₹${_totalExpenses.toStringAsFixed(2)}',
+      'Net Cash Flow': '₹${_netCashFlow.toStringAsFixed(2)}',
+    };
+
+    await ReportExportService.showPdfOptionsSheet(
+      context: context,
+      title: 'Day Book Report',
+      periodLabel: dateStr,
+      summaryStats: summary,
+      tableHeaders: tableHeaders,
+      tableRows: tableRows,
+    );
+  }
+
+  Future<void> _exportExcel() async {
+    final dateStr = DateFormat('dd/MM/yyyy').format(selectedDate);
+    final tableHeaders = ['Time', 'Type', 'Title / Party', 'Details', 'Amount (INR)'];
+    final tableRows = _transactions.map((item) {
+      final type = item['type']?.toString() ?? 'Sale';
+      final title = item['title']?.toString() ?? 'Transaction';
+      final subtitle = item['subtitle']?.toString() ?? '';
+      final partyName = item['partyName']?.toString() ?? '';
+      final amount = (item['amount'] as num?)?.toDouble() ?? 0.0;
+      final isPositive = item['isPositive'] == true;
+      final timestamp = DateTime.tryParse(item['timestamp']?.toString() ?? '') ?? DateTime.now();
+      final timeStr = DateFormat('hh:mm a').format(timestamp);
+      final partyDisplay = partyName.isNotEmpty ? partyName : title;
+      final signedAmount = (isPositive ? amount : -amount).toStringAsFixed(2);
+      return [
+        timeStr,
+        type,
+        partyDisplay,
+        subtitle,
+        signedAmount,
+      ];
+    }).toList();
+
+    final summary = {
+      'Date': dateStr,
+      'Total Sales': '₹${_totalSales.toStringAsFixed(2)}',
+      'Total Purchases': '₹${_totalPurchases.toStringAsFixed(2)}',
+      'Total Expenses': '₹${_totalExpenses.toStringAsFixed(2)}',
+      'Net Cash Flow': '₹${_netCashFlow.toStringAsFixed(2)}',
+    };
+
+    await ReportExportService.showExcelOptionsSheet(
+      context: context,
+      title: 'Day Book Report',
+      periodLabel: dateStr,
+      summaryStats: summary,
+      tableHeaders: tableHeaders,
+      tableRows: tableRows,
     );
   }
 

@@ -3,8 +3,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/services/api_service.dart';
 import '../../../core/theme/joyn_colors.dart';
 import '../../../core/theme/joyn_typography.dart';
+import '../../team_management/data/team_member_repository.dart';
 import '../../team_management/models/team_member_model.dart';
 import 'widgets/add_team_member_dialog.dart'
     show kAvatarPrefix, kPresetAvatars, buildPresetAvatarWidget;
@@ -295,10 +297,123 @@ class _FloatingAvatarState extends State<_FloatingAvatar>
 // =====================================================================
 // MAIN SCREEN
 // =====================================================================
-class TeamMemberDetailScreen extends StatelessWidget {
+class TeamMemberDetailScreen extends StatefulWidget {
   final TeamMemberModel member;
 
   const TeamMemberDetailScreen({super.key, required this.member});
+
+  @override
+  State<TeamMemberDetailScreen> createState() => _TeamMemberDetailScreenState();
+}
+
+class _TeamMemberDetailScreenState extends State<TeamMemberDetailScreen> {
+  late TeamMemberModel _member;
+  final TeamMemberRepository _repository = TeamMemberRepository();
+  bool _isToggling = false;
+  bool _loadingStats = true;
+  double _totalSold = 0;
+  double _totalPurchased = 0;
+  int _activityCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _member = widget.member;
+    _loadMemberStats();
+  }
+
+  Future<void> _loadMemberStats() async {
+    try {
+      final res = await ApiService.fetchMemberActivityLogs(_member.id, period: '1month');
+      if (res['success'] == true && res['logs'] is List) {
+        final logs = res['logs'] as List;
+        double sold = 0;
+        double purchased = 0;
+        final realLogs = logs.where((l) {
+          final title = (l['title'] ?? '').toString().toLowerCase();
+          final subtitle = (l['subtitle'] ?? '').toString().toLowerCase();
+          if (title.contains('team member joined') || (title.contains('team member updated'))) return false;
+          if (subtitle.contains('assigned as')) return false;
+          return true;
+        }).toList();
+
+        for (final l in realLogs) {
+          final amt = (l['amount'] as num?)?.toDouble() ?? 0;
+          final type = l['type']?.toString();
+          if (type == 'itemSold') sold += amt;
+          else if (type == 'itemPurchased') purchased += amt;
+        }
+        if (mounted) {
+          setState(() {
+            _totalSold = sold;
+            _totalPurchased = purchased;
+            _activityCount = realLogs.length;
+            _loadingStats = false;
+          });
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            _totalSold = 0;
+            _totalPurchased = 0;
+            _activityCount = 0;
+            _loadingStats = false;
+          });
+        }
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _totalSold = 0;
+          _totalPurchased = 0;
+          _activityCount = 0;
+          _loadingStats = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _toggleStatus([bool? targetState]) async {
+    if (_isToggling) return;
+    final nextStatus = targetState ?? !_member.isActive;
+    setState(() {
+      _isToggling = true;
+      _member = _member.copyWith(isActive: nextStatus);
+    });
+
+    try {
+      await _repository.toggleMemberActive(_member.id, nextStatus);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              nextStatus
+                  ? '${_member.name} activated successfully'
+                  : '${_member.name} deactivated successfully',
+            ),
+            backgroundColor: nextStatus ? JoynColors.success : const Color(0xFF64748B),
+            duration: const Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _member = _member.copyWith(isActive: !nextStatus);
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update status: $e'),
+            backgroundColor: JoynColors.error,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isToggling = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -341,20 +456,215 @@ class TeamMemberDetailScreen extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
           children: [
             _StaggeredItem(index: 0, child: _buildProfileHero()),
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
+
+            _StaggeredItem(index: 1, child: _buildSectionLabel('Access & Status Control')),
+            const SizedBox(height: 12),
+            _StaggeredItem(index: 2, child: _buildStatusControlCard()),
+            const SizedBox(height: 20),
+
+            _StaggeredItem(index: 3, child: _buildSectionLabel('Performance (Last 30 Days)')),
+            const SizedBox(height: 12),
+            _StaggeredItem(index: 4, child: _buildPerformanceCard()),
+            const SizedBox(height: 20),
 
             _StaggeredItem(
-                index: 1, child: _buildSectionLabel('Contact Information')),
+                index: 5, child: _buildSectionLabel('Contact Information')),
             const SizedBox(height: 12),
-            _StaggeredItem(index: 2, child: _buildInfoCard()),
+            _StaggeredItem(index: 6, child: _buildInfoCard()),
             const SizedBox(height: 24),
 
-            _StaggeredItem(index: 3, child: _buildSectionLabel('Activity')),
+            _StaggeredItem(index: 7, child: _buildSectionLabel('Activity Log')),
             const SizedBox(height: 12),
-            _StaggeredItem(index: 4, child: _buildActivityLogButton(context)),
+            _StaggeredItem(index: 8, child: _buildActivityLogButton(context)),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildStatusControlCard() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: _member.isActive
+              ? JoynColors.success.withValues(alpha: 0.3)
+              : JoynColors.border,
+          width: 1.2,
+        ),
+        boxShadow: _P.cardShadow,
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: _member.isActive
+                  ? JoynColors.success.withValues(alpha: 0.12)
+                  : const Color(0xFFF1F5F9),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              _member.isActive ? Icons.verified_user_rounded : Icons.block_rounded,
+              color: _member.isActive ? JoynColors.success : JoynColors.secondaryText,
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _member.isActive ? 'Active Team Member' : 'Deactivated Member',
+                  style: JoynTypography.bodyMedium.copyWith(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                    color: _member.isActive ? JoynColors.success : Colors.black87,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  _member.isActive
+                      ? 'Member has active business access'
+                      : 'Member login & business access is disabled',
+                  style: JoynTypography.caption.copyWith(
+                    color: JoynColors.secondaryText,
+                    fontSize: 11.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Switch.adaptive(
+            value: _member.isActive,
+            activeColor: JoynColors.success,
+            onChanged: _isToggling ? null : (val) => _toggleStatus(val),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPerformanceCard() {
+    if (_loadingStats) {
+      return Container(
+        height: 80,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: _P.cardShadow,
+        ),
+        child: const Center(
+          child: SizedBox(
+            width: 22,
+            height: 22,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      );
+    }
+
+    return Row(
+      children: [
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: _P.cardShadow,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: JoynColors.success.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.point_of_sale_rounded, size: 16, color: JoynColors.success),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'TOTAL SALES',
+                      style: JoynTypography.caption.copyWith(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        color: JoynColors.secondaryText,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  '₹${_totalSold.toStringAsFixed(0)}',
+                  style: JoynTypography.titleMedium.copyWith(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: JoynColors.success,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: _P.cardShadow,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0284C7).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.receipt_long_rounded, size: 16, color: Color(0xFF0284C7)),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'ACTIVITIES',
+                      style: JoynTypography.caption.copyWith(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        color: JoynColors.secondaryText,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  '$_activityCount Records',
+                  style: JoynTypography.titleMedium.copyWith(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.black87,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -362,9 +672,7 @@ class TeamMemberDetailScreen extends StatelessWidget {
   // PROFILE HERO — gradient card
   // =================================================================
   Widget _buildProfileHero() {
-    final statusColor =
-    member.isActive ? JoynColors.success : JoynColors.secondaryText;
-    final statusLabel = member.isActive ? 'Active' : 'Not Active';
+    final statusLabel = _member.isActive ? 'Active' : 'Not Active';
 
     return Container(
       decoration: BoxDecoration(
@@ -478,7 +786,7 @@ class TeamMemberDetailScreen extends StatelessWidget {
 
                 // ---- Name ----
                 Text(
-                  member.name,
+                  _member.name,
                   textAlign: TextAlign.center,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
@@ -517,7 +825,7 @@ class TeamMemberDetailScreen extends StatelessWidget {
                               size: 11, color: Colors.white),
                           const SizedBox(width: 5),
                           Text(
-                            member.roleName,
+                            _member.roleName,
                             style: JoynTypography.caption.copyWith(
                               fontSize: 11.5,
                               fontWeight: FontWeight.w800,
@@ -528,42 +836,47 @@ class TeamMemberDetailScreen extends StatelessWidget {
                         ],
                       ),
                     ),
-                    // Status pill
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.16),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.20),
-                            width: 0.9),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (member.isActive)
-                            _PulsingDot(color: Colors.white, size: 5)
-                          else
-                            Container(
-                              width: 6,
-                              height: 6,
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.7),
-                                shape: BoxShape.circle,
+                    // Status pill (interactive tap to toggle)
+                    GestureDetector(
+                      onTap: () => _toggleStatus(),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: _member.isActive
+                              ? Colors.white.withValues(alpha: 0.22)
+                              : Colors.black.withValues(alpha: 0.25),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.25),
+                              width: 0.9),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (_member.isActive)
+                              _PulsingDot(color: Colors.white, size: 5)
+                            else
+                              Container(
+                                width: 6,
+                                height: 6,
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.7),
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            const SizedBox(width: 6),
+                            Text(
+                              statusLabel,
+                              style: JoynTypography.caption.copyWith(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                                letterSpacing: 0.2,
                               ),
                             ),
-                          const SizedBox(width: 6),
-                          Text(
-                            statusLabel,
-                            style: JoynTypography.caption.copyWith(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w800,
-                              color: Colors.white,
-                              letterSpacing: 0.2,
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ],
@@ -577,7 +890,7 @@ class TeamMemberDetailScreen extends StatelessWidget {
   }
 
   Widget _buildAvatarContent() {
-    final path = member.photoPath;
+    final path = _member.photoPath;
 
     if (path != null && path.startsWith(kAvatarPrefix)) {
       final index = int.tryParse(path.substring(kAvatarPrefix.length)) ?? 0;
@@ -591,7 +904,7 @@ class TeamMemberDetailScreen extends StatelessWidget {
 
     return Center(
       child: Text(
-        member.name.isNotEmpty ? member.name[0].toUpperCase() : '?',
+        _member.name.isNotEmpty ? _member.name[0].toUpperCase() : '?',
         style: JoynTypography.titleLarge.copyWith(
           fontSize: 38,
           fontWeight: FontWeight.w900,
@@ -637,20 +950,20 @@ class TeamMemberDetailScreen extends StatelessWidget {
       _InfoRow(
         icon: Icons.phone_outlined,
         label: 'Phone',
-        value: member.phone.isEmpty ? 'Not added' : member.phone,
+        value: _member.phone.isEmpty ? 'Not added' : _member.phone,
         color: const Color(0xFF0284C7),
       ),
       _InfoRow(
         icon: Icons.email_outlined,
         label: 'Email',
-        value: member.email.isEmpty ? 'Not added' : member.email,
+        value: _member.email.isEmpty ? 'Not added' : _member.email,
         color: const Color(0xFFB45309),
       ),
       _InfoRow(
         icon: Icons.login_rounded,
         label: 'Last Login',
-        value: member.lastLoginTime != null
-            ? '${member.lastLoginTime!.day}/${member.lastLoginTime!.month}/${member.lastLoginTime!.year}'
+        value: _member.lastLoginTime != null
+            ? '${_member.lastLoginTime!.day}/${_member.lastLoginTime!.month}/${_member.lastLoginTime!.year}'
             : 'Never logged in',
         color: const Color(0xFF7C3AED),
         isLast: true,
@@ -739,7 +1052,7 @@ class TeamMemberDetailScreen extends StatelessWidget {
   Widget _buildActivityLogButton(BuildContext context) {
     return _Pressable(
       scale: 0.98,
-      onTap: () => context.push('/team-member-activity-log', extra: member),
+      onTap: () => context.push('/team-member-activity-log', extra: _member),
       child: Container(
         height: 64,
         decoration: BoxDecoration(

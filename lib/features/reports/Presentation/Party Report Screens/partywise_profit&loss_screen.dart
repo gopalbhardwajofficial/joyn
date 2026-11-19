@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:joyn/core/theme/joyn_typography.dart';
 import 'package:joyn/core/theme/joyn_colors.dart';
-import 'package:joyn/core/widgets/Premium_widget.dart';
+import 'package:joyn/core/services/report_export_service.dart';
 
 class PartyProfit {
   final String partyName;
@@ -151,14 +151,14 @@ class _PartyWiseProfitLossScreenState extends State<PartyWiseProfitLossScreen> {
             label: 'Pdf',
             icon: Icons.picture_as_pdf_rounded,
             color: const Color(0xFFDC2626),
-            onTap: () => _showSnackBar('Exporting PDF...'),
+            onTap: _exportRealPdf,
           ),
           const SizedBox(width: 6),
           _buildAppBarIconButton(
             label: 'xls',
             icon: Icons.grid_on_rounded,
             color: JoynColors.success,
-            onTap: () => _showSnackBar('Exporting Excel...'),
+            onTap: _exportRealExcel,
           ),
           const SizedBox(width: 16),
         ],
@@ -753,19 +753,61 @@ class _PartyWiseProfitLossScreenState extends State<PartyWiseProfitLossScreen> {
     );
   }
 
-  void _showSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          message,
-          style: JoynTypography.bodyMedium.copyWith(color: Colors.white),
-        ),
-        backgroundColor: JoynColors.primary,
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.all(16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        duration: const Duration(milliseconds: 1500),
-      ),
+  Future<void> _exportRealPdf() async {
+    final dateFmt = DateFormat('dd/MM/yyyy');
+    final periodStr = '${dateFmt.format(fromDate)} - ${dateFmt.format(toDate)}';
+    final currency = NumberFormat('#,##,##0.00', 'en_IN');
+
+    final tableHeaders = ['Party Name', 'Sale Amount', 'Profit / Loss'];
+    final tableRows = parties.map((p) {
+      final sign = p.profitLoss >= 0 ? '+' : '-';
+      return [
+        p.partyName,
+        '₹ ${currency.format(p.saleAmount)}',
+        '$sign₹ ${currency.format(p.profitLoss.abs())}',
+      ];
+    }).toList();
+
+    final summary = {
+      'Total Parties': '${parties.length}',
+      'Total Sales': '₹ ${currency.format(totalSaleAmount)}',
+      'Total Profit / Loss': '₹ ${currency.format(totalProfitLoss)}',
+    };
+
+    await ReportExportService.showPdfOptionsSheet(
+      context: context,
+      title: 'Party-wise Profit & Loss Report',
+      periodLabel: periodStr,
+      summaryStats: summary,
+      tableHeaders: tableHeaders,
+      tableRows: tableRows,
+    );
+  }
+
+  Future<void> _exportRealExcel() async {
+    final dateFmt = DateFormat('dd/MM/yyyy');
+    final periodStr = '${dateFmt.format(fromDate)} - ${dateFmt.format(toDate)}';
+
+    final tableHeaders = ['Party Name', 'Sale Amount (INR)', 'Profit/Loss (INR)'];
+    final tableRows = parties.map((p) => [
+      p.partyName,
+      p.saleAmount.toStringAsFixed(2),
+      p.profitLoss.toStringAsFixed(2),
+    ]).toList();
+
+    final summary = {
+      'Total Parties': '${parties.length}',
+      'Total Sales': totalSaleAmount.toStringAsFixed(2),
+      'Total Profit / Loss': totalProfitLoss.toStringAsFixed(2),
+    };
+
+    await ReportExportService.showExcelOptionsSheet(
+      context: context,
+      title: 'Party-wise Profit & Loss Report',
+      periodLabel: periodStr,
+      summaryStats: summary,
+      tableHeaders: tableHeaders,
+      tableRows: tableRows,
     );
   }
 }

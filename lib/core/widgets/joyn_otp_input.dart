@@ -5,12 +5,14 @@ import '../theme/joyn_typography.dart';
 
 class JoynOtpInput extends StatefulWidget {
   final int length;
+  final String? value;
   final ValueChanged<String>? onChanged;
   final ValueChanged<String>? onCompleted;
 
   const JoynOtpInput({
     super.key,
-    this.length = 6,
+    this.length = 4,
+    this.value,
     this.onChanged,
     this.onCompleted,
   });
@@ -28,6 +30,27 @@ class _JoynOtpInputState extends State<JoynOtpInput> {
     super.initState();
     _controllers = List.generate(widget.length, (_) => TextEditingController());
     _focusNodes = List.generate(widget.length, (_) => FocusNode());
+    _applyValue(widget.value);
+  }
+
+  @override
+  void didUpdateWidget(covariant JoynOtpInput oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.value != null && widget.value != oldWidget.value) {
+      _applyValue(widget.value);
+    }
+  }
+
+  void _applyValue(String? val) {
+    if (val == null) return;
+    final digits = val.replaceAll(RegExp(r'\D'), '');
+    for (int i = 0; i < widget.length; i++) {
+      if (i < digits.length) {
+        _controllers[i].text = digits[i];
+      } else {
+        _controllers[i].clear();
+      }
+    }
   }
 
   @override
@@ -81,11 +104,11 @@ class _JoynOtpInputState extends State<JoynOtpInput> {
   @override
   Widget build(BuildContext context) {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: List.generate(widget.length, (index) {
         return SizedBox(
-          width: 48,
-          height: 56,
+          width: 64,
+          height: 64,
           child: KeyboardListener(
             focusNode: FocusNode(),
             onKeyEvent: (event) {

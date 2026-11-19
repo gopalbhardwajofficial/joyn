@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 import 'package:joyn/core/theme/joyn_typography.dart';
 import 'package:joyn/core/theme/joyn_colors.dart';
 import 'package:joyn/features/reports/Presentation/Transaction%20reports/Alltransaction_screen.dart';
@@ -16,6 +17,13 @@ import 'package:joyn/features/reports/Presentation/Transaction%20reports/daybook
 import 'package:joyn/features/reports/Presentation/Transaction%20reports/purchase_report_screen.dart';
 
 import 'Transaction reports/sale_report_screen.dart';
+import 'gst/gstr1_report_screen.dart';
+import 'gst/gstr2_report_screen.dart';
+import 'gst/gstr3b_report_screen.dart';
+import 'gst/gstr9_report_screen.dart';
+import 'gst/hsn_summary_screen.dart';
+import 'expenses/manage_expenses_screen.dart';
+import 'overview_screen.dart';
 
 const Color _crownBg = Color(0xFFB39DDB);
 
@@ -91,7 +99,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         ReportItem('Day Book', subtitle: 'Daily transaction summary',
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DayBookScreen()))),
         ReportItem('All Transactions', subtitle: 'Complete ledger view',
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AllTransactionsScreen(transactions: sampleTransactions)))),
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AllTransactionsScreen()))),
         ReportItem('Bill Wise Profit', subtitle: 'Profit per invoice',
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BillWiseProfitScreen()))),
         ReportItem('Profit & Loss', subtitle: 'Income vs expenses',
@@ -124,12 +132,17 @@ class _ReportsScreenState extends State<ReportsScreen> {
       subtitle: 'Tax filings & compliance',
       icon: Icons.account_balance_rounded,
       items: [
-        ReportItem('GSTR-1', subtitle: 'Outward supplies', onTap: () => _openReport(context, 'GSTR-1')),
-        ReportItem('GSTR-2', subtitle: 'Inward supplies', onTap: () => _openReport(context, 'GSTR-2')),
-        ReportItem('GSTR-3B', subtitle: 'Monthly summary return', onTap: () => _openReport(context, 'GSTR-3B')),
+        ReportItem('GSTR-1', subtitle: 'Outward supplies',
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const Gstr1ReportScreen()))),
+        ReportItem('GSTR-2', subtitle: 'Inward supplies',
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const Gstr2ReportScreen()))),
+        ReportItem('GSTR-3B', subtitle: 'Monthly summary return',
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const Gstr3bReportScreen()))),
         ReportItem('GST Transaction Report', subtitle: 'All GST transactions', onTap: () => _openReport(context, 'GST Transaction report')),
-        ReportItem('GSTR-9', subtitle: 'Annual return', onTap: () => _openReport(context, 'GSTR-9')),
-        ReportItem('Sale Summary by HSN', subtitle: 'HSN-wise sale breakup', onTap: () => _openReport(context, 'Sale Summary by HSN')),
+        ReportItem('GSTR-9', subtitle: 'Annual return',
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const Gstr9ReportScreen()))),
+        ReportItem('Sale Summary by HSN', subtitle: 'HSN-wise sale breakup',
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HsnSummaryScreen()))),
         ReportItem('SAC Report', subtitle: 'Service accounting codes', onTap: () => _openReport(context, 'SAC Report')),
       ],
     ),
@@ -178,9 +191,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
       subtitle: 'Track your spending',
       icon: Icons.account_balance_wallet_rounded,
       items: [
-        ReportItem('Expense Transaction Report', subtitle: 'All expense entries', onTap: () => _openReport(context, 'Expense Transaction Report')),
-        ReportItem('Expense Category Report', subtitle: 'Category-wise summary', onTap: () => _openReport(context, 'Expense Category Report')),
-        ReportItem('Expense Item Report', subtitle: 'Item-wise expenses', onTap: () => _openReport(context, 'Expense Item Report')),
+        ReportItem('Expense Transaction Report', subtitle: 'All expense entries',
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ManageExpensesScreen()))),
+        ReportItem('Expense Category Report', subtitle: 'Category-wise summary',
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ManageExpensesScreen()))),
+        ReportItem('Expense Item Report', subtitle: 'Item-wise expenses',
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ManageExpensesScreen()))),
       ],
     ),
     ReportSection(
@@ -190,6 +206,19 @@ class _ReportsScreenState extends State<ReportsScreen> {
       items: [
         ReportItem('Order Transaction Report', subtitle: 'All order transactions', onTap: () => _openReport(context, 'Sale/Purchase Order Transaction Report')),
         ReportItem('Order Item Report', subtitle: 'Item-wise orders', onTap: () => _openReport(context, 'Sale/Purchase Order Item Report')),
+      ],
+    ),
+    ReportSection(
+      title: 'Estimates & Returns',
+      subtitle: 'Quotations, Credit & Debit Notes',
+      icon: Icons.assignment_return_rounded,
+      items: [
+        ReportItem('Quotations / Estimates', subtitle: 'Manage & convert to tax invoice',
+            onTap: () => context.push('/quotations')),
+        ReportItem('Sales Returns (Credit Notes)', subtitle: 'Customer returns & stock restoration',
+            onTap: () => context.push('/credit-notes')),
+        ReportItem('Purchase Returns (Debit Notes)', subtitle: 'Supplier returns & inventory adjustment',
+            onTap: () => context.push('/debit-notes')),
       ],
     ),
     ReportSection(
@@ -275,9 +304,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
         itemBuilder: (context, index) {
           // Header stats card
           if (index == 0) {
-            return _StatsHeader(
-              totalReports: totalReports,
-              totalCategories: sections.length,
+            return Column(
+              children: [
+                _buildAnalyticsHeroCard(context),
+                _StatsHeader(
+                  totalReports: totalReports,
+                  totalCategories: sections.length,
+                ),
+              ],
             );
           }
           return _SectionCard(
@@ -285,6 +319,134 @@ class _ReportsScreenState extends State<ReportsScreen> {
             sectionNumber: index,
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildAnalyticsHeroCard(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF0F172A), Color(0xFF1E293B)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: () {
+            HapticFeedback.lightImpact();
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => Scaffold(
+                  appBar: AppBar(
+                    backgroundColor: JoynColors.surface,
+                    elevation: 0,
+                    scrolledUnderElevation: 0,
+                    leading: IconButton(
+                      icon: const Icon(Icons.arrow_back_rounded, color: JoynColors.primaryText),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                    title: Text(
+                      'Executive KPIs & Analytics',
+                      style: JoynTypography.titleMedium.copyWith(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 18,
+                        color: JoynColors.primaryText,
+                      ),
+                    ),
+                  ),
+                  body: const OverviewScreen(),
+                ),
+              ),
+            );
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF10B981), Color(0xFF059669)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF10B981).withValues(alpha: 0.35),
+                        blurRadius: 10,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(Icons.insights_rounded, color: Colors.white, size: 24),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Text(
+                            'Business Intelligence',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 15.5,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.2,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text(
+                              'NEW',
+                              style: TextStyle(
+                                color: Color(0xFF34D399),
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        'Live velocity graphs, star items, dead stock & profit KPIs',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.75),
+                          fontSize: 11.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white70, size: 14),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

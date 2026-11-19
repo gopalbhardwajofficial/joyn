@@ -1,6 +1,9 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../../../core/theme/joyn_colors.dart';
 import '../../../core/theme/joyn_typography.dart';
 import '../../../core/widgets/joyn_button.dart';
@@ -16,17 +19,90 @@ class ManualLoginScreen extends ConsumerStatefulWidget {
 
 class _ManualLoginScreenState extends ConsumerState<ManualLoginScreen> {
   final TextEditingController _phoneController = TextEditingController();
+  late final TapGestureRecognizer _termsRecognizer;
+  late final TapGestureRecognizer _privacyRecognizer;
 
   @override
   void initState() {
     super.initState();
-    _phoneController.text = '81308 20030';
+    _phoneController.text = ''; // No hardcoded/static default values
+    _termsRecognizer = TapGestureRecognizer()
+      ..onTap = () => context.push('/terms-of-service');
+    _privacyRecognizer = TapGestureRecognizer()
+      ..onTap = () => context.push('/privacy-policy');
   }
 
   @override
   void dispose() {
+    _termsRecognizer.dispose();
+    _privacyRecognizer.dispose();
     _phoneController.dispose();
     super.dispose();
+  }
+
+  Future<void> _handleGoogleSignIn() async {
+    HapticFeedback.lightImpact();
+    try {
+      final GoogleSignIn googleSignIn = GoogleSignIn(
+        serverClientId: '1031382782366-mg6d7m4nj9uk751i3o33clfcee4mnrr2.apps.googleusercontent.com',
+        scopes: ['email', 'profile'],
+      );
+
+      // Sign out any cached session so the native account picker always shows device accounts
+      await googleSignIn.signOut().catchError((_) => null);
+
+      // Trigger the native system Google Account Picker
+      final GoogleSignInAccount? account = await googleSignIn.signIn();
+
+      if (account == null) {
+        // User cancelled account selection
+        return;
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Signing in with ${account.email}...'),
+          duration: const Duration(milliseconds: 1500),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+
+      final res = await ref.read(authProvider.notifier).googleLoginApi(
+        email: account.email,
+        displayName: account.displayName,
+        photoUrl: account.photoUrl,
+      );
+
+      if (mounted) {
+        if (res['success'] == true) {
+          final businesses = (res['businesses'] as List?) ?? [];
+          if (businesses.isNotEmpty) {
+            context.go('/dashboard');
+          } else {
+            context.go('/company-selection');
+          }
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(res['message']?.toString() ?? 'Google sign in failed. Please try again.'),
+              backgroundColor: JoynColors.error,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (!mounted) return;
+      debugPrint('Google Sign In Error: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Google Sign-In: ${e.toString()}'),
+          backgroundColor: JoynColors.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   @override
@@ -47,7 +123,6 @@ class _ManualLoginScreenState extends ConsumerState<ManualLoginScreen> {
             children: [
               const SizedBox(height: 12),
 
-
               Text(
                 'Sign in',
                 style: JoynTypography.heading.copyWith(
@@ -64,7 +139,6 @@ class _ManualLoginScreenState extends ConsumerState<ManualLoginScreen> {
 
               const SizedBox(height: 32),
 
-
               JoynPhoneTextField(
                 controller: _phoneController,
                 onChanged: (val) {
@@ -74,13 +148,19 @@ class _ManualLoginScreenState extends ConsumerState<ManualLoginScreen> {
 
               const SizedBox(height: 20),
 
-
               JoynButton(
                 text: 'Continue',
                 variant: JoynButtonVariant.filled,
-                onPressed: () {
-                  ref.read(authProvider.notifier).startOtpTimer();
-                  context.push('/otp');
+                onPressed: () async {
+                  final rawPhone = _phoneController.text.trim();
+                  if (rawPhone.isNotEmpty) {
+                    final cleanPhone = rawPhone.replaceAll(RegExp(r'\D'), '');
+                    final fullPhone = cleanPhone.length == 10 ? '+91 $cleanPhone' : rawPhone;
+                    await ref.read(authProvider.notifier).sendOtpApi(fullPhone);
+                  }
+                  if (mounted) {
+                    context.push('/otp');
+                  }
                 },
               ),
 
@@ -112,14 +192,11 @@ class _ManualLoginScreenState extends ConsumerState<ManualLoginScreen> {
               JoynButton(
                 text: 'Continue with Google',
                 variant: JoynButtonVariant.outlined,
-                leadingIcon: _GoogleIcon(),
-                onPressed: () {
-
-                },
+                leadingIcon: const _GoogleIcon(size: 20),
+                onPressed: _handleGoogleSignIn,
               ),
 
               const Spacer(),
-
 
               Center(
                 child: Padding(
@@ -135,6 +212,7 @@ class _ManualLoginScreenState extends ConsumerState<ManualLoginScreen> {
                         const TextSpan(text: 'By continuing you agree to our\n'),
                         TextSpan(
                           text: 'Terms of Service',
+                          recognizer: _termsRecognizer,
                           style: JoynTypography.caption.copyWith(
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
@@ -145,6 +223,7 @@ class _ManualLoginScreenState extends ConsumerState<ManualLoginScreen> {
                         const TextSpan(text: ' and '),
                         TextSpan(
                           text: 'Privacy Policy',
+                          recognizer: _privacyRecognizer,
                           style: JoynTypography.caption.copyWith(
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
@@ -166,12 +245,16 @@ class _ManualLoginScreenState extends ConsumerState<ManualLoginScreen> {
 }
 
 class _GoogleIcon extends StatelessWidget {
+  final double size;
+  const _GoogleIcon({this.size = 20});
+
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 20,
-      height: 25,
+      width: size,
+      height: size,
       child: CustomPaint(
+        size: Size(size, size),
         painter: _GoogleIconPainter(),
       ),
     );
@@ -181,54 +264,61 @@ class _GoogleIcon extends StatelessWidget {
 class _GoogleIconPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final double w = size.width;
-    final double h = size.height;
+    final scale = size.width / 48.0;
+    canvas.scale(scale, scale);
 
-    final paintRed = Paint()..color = const Color(0xFFEA4335);
-    final paintBlue = Paint()..color = const Color(0xFF4285F4);
-    final paintGreen = Paint()..color = const Color(0xFF34A853);
-    final paintYellow = Paint()..color = const Color(0xFFFBBC05);
-
-    final pathRed = Path()
-      ..moveTo(w * 0.5, h * 0.2)
-      ..cubicTo(w * 0.68, h * 0.2, w * 0.81, h * 0.27, w * 0.9, h * 0.35)
-      ..lineTo(w * 0.77, h * 0.48)
-      ..cubicTo(w * 0.7, h * 0.41, w * 0.61, h * 0.38, w * 0.5, h * 0.38)
-      ..cubicTo(w * 0.35, h * 0.38, w * 0.23, h * 0.48, w * 0.19, h * 0.62)
-      ..lineTo(w * 0.05, h * 0.51)
-      ..cubicTo(w * 0.12, h * 0.32, w * 0.29, h * 0.2, w * 0.5, h * 0.2);
-    canvas.drawPath(pathRed, paintRed);
-
+    // Official 48x48 Google 'G' geometry
+    final paintBlue = Paint()..color = const Color(0xFF4285F4)..style = PaintingStyle.fill;
     final pathBlue = Path()
-      ..moveTo(w * 0.95, h * 0.51)
-      ..cubicTo(w * 0.95, h * 0.48, w * 0.94, h * 0.44, w * 0.94, h * 0.41)
-      ..lineTo(w * 0.5, h * 0.41)
-      ..lineTo(w * 0.5, h * 0.59)
-      ..lineTo(w * 0.76, h * 0.59)
-      ..cubicTo(w * 0.75, h * 0.66, w * 0.71, h * 0.72, w * 0.65, h * 0.76)
-      ..lineTo(w * 0.79, h * 0.87)
-      ..cubicTo(w * 0.89, h * 0.78, w * 0.95, h * 0.66, w * 0.95, h * 0.51);
+      ..moveTo(46.98, 24.55)
+      ..cubicTo(46.98, 22.88, 46.83, 21.28, 46.55, 19.74)
+      ..lineTo(24, 19.74)
+      ..lineTo(24, 28.98)
+      ..lineTo(36.93, 28.98)
+      ..cubicTo(36.37, 31.98, 34.68, 34.52, 32.14, 36.22)
+      ..lineTo(32.14, 42.24)
+      ..lineTo(39.9, 42.24)
+      ..cubicTo(44.44, 38.05, 46.98, 31.88, 46.98, 24.55)
+      ..close();
     canvas.drawPath(pathBlue, paintBlue);
 
+    final paintGreen = Paint()..color = const Color(0xFF34A853)..style = PaintingStyle.fill;
     final pathGreen = Path()
-      ..moveTo(w * 0.5, h * 0.82)
-      ..cubicTo(w * 0.61, h * 0.82, w * 0.7, h * 0.78, w * 0.77, h * 0.72)
-      ..lineTo(w * 0.63, h * 0.61)
-      ..cubicTo(w * 0.59, h * 0.64, w * 0.54, h * 0.66, w * 0.5, h * 0.66)
-      ..cubicTo(w * 0.35, h * 0.66, w * 0.23, h * 0.56, w * 0.19, h * 0.42)
-      ..lineTo(w * 0.05, h * 0.53)
-      ..cubicTo(w * 0.12, h * 0.72, w * 0.29, h * 0.82, w * 0.5, h * 0.82);
+      ..moveTo(24, 48)
+      ..cubicTo(30.48, 48, 35.91, 45.85, 39.9, 42.24)
+      ..lineTo(32.14, 36.22)
+      ..cubicTo(30, 37.66, 27.24, 38.53, 24, 38.53)
+      ..cubicTo(17.75, 38.53, 12.46, 34.31, 10.57, 28.62)
+      ..lineTo(2.57, 28.62)
+      ..lineTo(2.57, 34.82)
+      ..cubicTo(6.55, 42.72, 14.67, 48, 24, 48)
+      ..close();
     canvas.drawPath(pathGreen, paintGreen);
 
+    final paintYellow = Paint()..color = const Color(0xFFFBBC05)..style = PaintingStyle.fill;
     final pathYellow = Path()
-      ..moveTo(w * 0.19, h * 0.62)
-      ..cubicTo(w * 0.17, h * 0.58, w * 0.16, h * 0.54, w * 0.16, h * 0.5)
-      ..cubicTo(w * 0.16, h * 0.46, w * 0.17, h * 0.42, w * 0.19, h * 0.38)
-      ..lineTo(w * 0.05, h * 0.27)
-      ..cubicTo(w * 0.02, h * 0.34, 0, h * 0.42, 0, h * 0.5)
-      ..cubicTo(0, h * 0.58, w * 0.02, h * 0.66, w * 0.05, h * 0.73)
-      ..lineTo(w * 0.19, h * 0.62);
+      ..moveTo(10.57, 28.62)
+      ..cubicTo(10.09, 27.18, 9.82, 25.62, 9.82, 24)
+      ..cubicTo(9.82, 22.38, 10.09, 20.82, 10.57, 19.38)
+      ..lineTo(10.57, 13.18)
+      ..lineTo(2.57, 13.18)
+      ..cubicTo(0.93, 16.44, 0, 20.11, 0, 24)
+      ..cubicTo(0, 27.89, 0.93, 31.56, 2.57, 34.82)
+      ..lineTo(10.57, 28.62)
+      ..close();
     canvas.drawPath(pathYellow, paintYellow);
+
+    final paintRed = Paint()..color = const Color(0xFFEA4335)..style = PaintingStyle.fill;
+    final pathRed = Path()
+      ..moveTo(24, 9.47)
+      ..cubicTo(27.52, 9.47, 30.68, 10.68, 33.17, 13.06)
+      ..lineTo(40.07, 6.16)
+      ..cubicTo(35.89, 2.27, 30.46, 0, 24, 0)
+      ..cubicTo(14.67, 0, 6.55, 5.28, 2.57, 13.18)
+      ..lineTo(10.57, 19.38)
+      ..cubicTo(12.46, 13.69, 17.75, 9.47, 24, 9.47)
+      ..close();
+    canvas.drawPath(pathRed, paintRed);
   }
 
   @override

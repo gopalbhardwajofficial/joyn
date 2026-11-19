@@ -1,6 +1,4 @@
-import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -11,8 +9,6 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:joyn/features/business_profile/presentation/widgets/add_team_member_dialog.dart';
 
 import '../../../core/theme/joyn_colors.dart';
 import '../../../core/theme/joyn_typography.dart';
@@ -21,8 +17,7 @@ import '../../auth/providers/auth_provider.dart';
 import '../../team_management/data/role_repository.dart';
 import '../../team_management/data/team_member_repository.dart';
 import 'package:joyn/features/team_management/models/team_member_model.dart';
-import 'team_member_detail_screen.dart';
-import 'widgets/add_team_member_dialog.dart' show kAvatarPrefix, kPresetAvatars, buildPresetAvatarWidget;
+import 'widgets/add_team_member_dialog.dart';
 import 'widgets/image_crop_dialog.dart';
 import 'widgets/signature_drawing_dialog.dart';
 
@@ -108,9 +103,6 @@ class BusinessProfileScreen extends ConsumerStatefulWidget {
 
 class _BusinessProfileScreenState
     extends ConsumerState<BusinessProfileScreen> {
-  static const _teamMembersPrefsKey = 'joyn_team_members';
-  static const _rolesPrefsKey = 'joyn_custom_roles';
-
   int _selectedTab = 0;
   int _selectedCardThemeIndex = 0;
 
@@ -139,6 +131,18 @@ class _BusinessProfileScreenState
   late TextEditingController _cityController;
   late TextEditingController _pincodeController;
   late TextEditingController _descriptionController;
+
+  // Phase 8: Branding, Bank Details & Invoice Customization
+  late TextEditingController _bankNameController;
+  late TextEditingController _accountNumberController;
+  late TextEditingController _ifscCodeController;
+  late TextEditingController _branchNameController;
+  late TextEditingController _upiIdController;
+  late TextEditingController _invoiceTermsController;
+
+  String _selectedInvoiceTheme = 'classic_blue';
+  String _selectedInvoiceColor = '#4338CA';
+  bool _showUpiQr = true;
 
   String _selectedBusinessType = 'Retail Business';
   String _selectedCategory = 'Kirana/ General Merchant';
@@ -420,6 +424,21 @@ class _BusinessProfileScreenState
     _showBusinessTypeOnCard = state.showBusinessTypeOnCard;
     _showCategoryOnCard = state.showCategoryOnCard;
 
+    // Phase 8: Branding & Banking Init
+    _bankNameController = TextEditingController(text: state.bankName);
+    _accountNumberController = TextEditingController(text: state.accountNumber);
+    _ifscCodeController = TextEditingController(text: state.ifscCode);
+    _branchNameController = TextEditingController(text: state.branchName);
+    _upiIdController = TextEditingController(text: state.upiId);
+    _invoiceTermsController = TextEditingController(
+      text: state.invoiceTerms.isNotEmpty
+          ? state.invoiceTerms
+          : '1. Goods once sold will not be taken back or exchanged.\n2. Payment due within 15 days of invoice date.\n3. Subject to local jurisdiction.',
+    );
+    _selectedInvoiceTheme = state.invoiceTheme.isNotEmpty ? state.invoiceTheme : 'classic_blue';
+    _selectedInvoiceColor = state.invoiceColorHex.isNotEmpty ? state.invoiceColorHex : '#4338CA';
+    _showUpiQr = state.showUpiQr;
+
     _loadTeamData();
   }
 
@@ -437,6 +456,12 @@ class _BusinessProfileScreenState
     _cityController.dispose();
     _pincodeController.dispose();
     _descriptionController.dispose();
+    _bankNameController.dispose();
+    _accountNumberController.dispose();
+    _ifscCodeController.dispose();
+    _branchNameController.dispose();
+    _upiIdController.dispose();
+    _invoiceTermsController.dispose();
     super.dispose();
   }
 
@@ -464,17 +489,6 @@ class _BusinessProfileScreenState
       });
     } catch (e) {
       debugPrint('Error loading team data: $e');
-    }
-  }
-
-  Future<void> _persistTeamMembers() async {
-    try {
-      await _teamMemberRepository.deleteAllTeamMembers();
-      for (var member in _teamMembers) {
-        await _teamMemberRepository.insertTeamMember(member);
-      }
-    } catch (e) {
-      debugPrint('Error persisting team members: $e');
     }
   }
 
@@ -775,6 +789,15 @@ class _BusinessProfileScreenState
       showGstOnCard: _showGstOnCard,
       showBusinessTypeOnCard: _showBusinessTypeOnCard,
       showCategoryOnCard: _showCategoryOnCard,
+      bankName: _bankNameController.text.trim(),
+      accountNumber: _accountNumberController.text.trim(),
+      ifscCode: _ifscCodeController.text.trim(),
+      branchName: _branchNameController.text.trim(),
+      upiId: _upiIdController.text.trim(),
+      invoiceTheme: _selectedInvoiceTheme,
+      invoiceColorHex: _selectedInvoiceColor,
+      invoiceTerms: _invoiceTermsController.text.trim(),
+      showUpiQr: _showUpiQr,
     );
 
     if (!mounted) return;
@@ -820,7 +843,11 @@ class _BusinessProfileScreenState
       });
 
       await _persistRoles();
-      await _persistTeamMembers();
+      if (existing != null) {
+        await _teamMemberRepository.updateTeamMember(member);
+      } else {
+        await _teamMemberRepository.insertTeamMember(member);
+      }
 
       if (existing != null && mounted) {
         context.push('/team-member-activity-log', extra: member);
@@ -829,20 +856,21 @@ class _BusinessProfileScreenState
   }
 
   void _toggleMemberActive(TeamMemberModel member) {
+    final newStatus = !member.isActive;
     setState(() {
       final index = _teamMembers.indexWhere((m) => m.id == member.id);
       if (index != -1) {
-        _teamMembers[index] = member.copyWith(isActive: !member.isActive);
+        _teamMembers[index] = member.copyWith(isActive: newStatus);
       }
     });
-    _persistTeamMembers();
+    _teamMemberRepository.toggleMemberActive(member.id, newStatus);
   }
 
   void _deleteMember(String id) {
     setState(() {
       _teamMembers.removeWhere((m) => m.id == id);
     });
-    _persistTeamMembers();
+    _teamMemberRepository.deleteTeamMember(id);
   }
 
 
@@ -983,7 +1011,7 @@ class _BusinessProfileScreenState
                   ),
                 ],
               ),
-            ] else ...[
+            ] else if (_selectedTab == 1) ...[
               _buildSectionHeader(1, 'Team Members', Icons.groups_outlined),
               const SizedBox(height: 16),
               _buildTeamMembersSection(),
@@ -1369,6 +1397,10 @@ class _BusinessProfileScreenState
   }
 
   Widget _buildTabsHeader() {
+    final canManageTeam = ref.watch(authProvider).isOwner || ref.watch(authProvider).permissions.accessAdmin;
+    if (!canManageTeam) {
+      return const SizedBox.shrink();
+    }
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
@@ -1384,8 +1416,8 @@ class _BusinessProfileScreenState
       ),
       child: Row(
         children: [
-          Expanded(child: _buildTabButton('Business Details', 0)),
-          Expanded(child: _buildTabButton('Team Members', 1)),
+          Expanded(child: _buildTabButton('Details', 0)),
+          Expanded(child: _buildTabButton('Team', 1)),
         ],
       ),
     );
@@ -1934,6 +1966,12 @@ class _BusinessProfileScreenState
                 ),
                 const SizedBox(width: 4),
                 _buildTileActionButton(
+                  icon: member.isActive ? Icons.check_circle_outline_rounded : Icons.block_rounded,
+                  color: member.isActive ? JoynColors.success : JoynColors.secondaryText,
+                  onTap: () => _toggleMemberActive(member),
+                ),
+                const SizedBox(width: 6),
+                _buildTileActionButton(
                   icon: Icons.edit_outlined,
                   color: JoynColors.secondaryText,
                   onTap: () => _addOrEditTeamMember(existing: member),
@@ -2166,6 +2204,395 @@ class _BusinessProfileScreenState
           ),
         ),
       ],
+    );
+  }
+
+  // ============================================================================
+  // PHASE 8: INVOICE BRANDING & THEMES SECTION WIDGETS
+  // ============================================================================
+
+  // ignore: unused_element
+  Widget _buildInvoiceBrandingSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionHeader(1, 'Invoice Theme & Color', Icons.palette_outlined),
+        const SizedBox(height: 16),
+        _buildInvoiceThemesCard(),
+
+        const SizedBox(height: 30),
+
+        _buildSectionHeader(2, 'Instant UPI Payment QR', Icons.qr_code_2_rounded),
+        const SizedBox(height: 16),
+        _buildUpiPaymentCard(),
+
+        const SizedBox(height: 30),
+
+        _buildSectionHeader(3, 'Bank Account Details', Icons.account_balance_outlined),
+        const SizedBox(height: 16),
+        _buildBankDetailsCard(),
+
+        const SizedBox(height: 30),
+
+        _buildSectionHeader(4, 'Terms & Conditions', Icons.gavel_outlined),
+        const SizedBox(height: 16),
+        _buildInvoiceTermsCard(),
+
+        const SizedBox(height: 30),
+
+        Row(
+          children: [
+            Expanded(
+              child: JoynButton(
+                text: 'Cancel',
+                variant: JoynButtonVariant.outlined,
+                onPressed: () => context.pop(),
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: JoynButton(
+                text: 'Save Branding',
+                variant: JoynButtonVariant.filled,
+                onPressed: _saveProfile,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildInvoiceThemesCard() {
+    final themes = [
+      {
+        'id': 'classic_blue',
+        'name': 'Classic Corporate',
+        'desc': 'Standard GST tax invoice with full tax grids & clean totals.',
+      },
+      {
+        'id': 'modern_minimal',
+        'name': 'Modern Minimal',
+        'desc': 'Clean typography, border accents, and compact metadata.',
+      },
+      {
+        'id': 'emerald_elegance',
+        'name': 'Emerald Elegance',
+        'desc': 'Sophisticated green styling with prominent bank & payment cards.',
+      },
+      {
+        'id': 'thermal_pos',
+        'name': 'Thermal POS 80mm',
+        'desc': 'Compact receipt slip for thermal roll counter printers.',
+      },
+    ];
+
+    final colorPresets = [
+      {'name': 'Indigo', 'hex': '#4338CA', 'color': const Color(0xFF4338CA)},
+      {'name': 'Sky Blue', 'hex': '#0284C7', 'color': const Color(0xFF0284C7)},
+      {'name': 'Emerald', 'hex': '#059669', 'color': const Color(0xFF059669)},
+      {'name': 'Crimson', 'hex': '#E11D48', 'color': const Color(0xFFE11D48)},
+      {'name': 'Amber', 'hex': '#D97706', 'color': const Color(0xFFD97706)},
+      {'name': 'Slate', 'hex': '#1E293B', 'color': const Color(0xFF1E293B)},
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: JoynColors.border, width: 1.2),
+        boxShadow: _Premium.cardShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Select Invoice Template',
+            style: JoynTypography.bodyLarge.copyWith(fontWeight: FontWeight.w700, fontSize: 14.5),
+          ),
+          const SizedBox(height: 12),
+          ...themes.map((t) {
+            final isSelected = _selectedInvoiceTheme == t['id'];
+            return GestureDetector(
+              onTap: () {
+                HapticFeedback.selectionClick();
+                setState(() => _selectedInvoiceTheme = t['id'] as String);
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: isSelected ? JoynColors.primary.withValues(alpha: 0.05) : Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: isSelected ? JoynColors.primary : JoynColors.border,
+                    width: isSelected ? 1.8 : 1.0,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 22,
+                      height: 22,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: isSelected ? JoynColors.primary : Colors.transparent,
+                        border: Border.all(
+                          color: isSelected ? JoynColors.primary : JoynColors.secondaryText.withValues(alpha: 0.4),
+                          width: 2,
+                        ),
+                      ),
+                      child: isSelected
+                          ? const Icon(Icons.check, size: 14, color: Colors.white)
+                          : null,
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            t['name'] as String,
+                            style: JoynTypography.bodyLarge.copyWith(
+                              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                              fontSize: 14,
+                              color: isSelected ? JoynColors.primary : const Color(0xFF1E293B),
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            t['desc'] as String,
+                            style: JoynTypography.caption.copyWith(
+                              fontSize: 12,
+                              color: JoynColors.secondaryText,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }),
+
+          const SizedBox(height: 16),
+          const Divider(height: 1),
+          const SizedBox(height: 16),
+
+          Text(
+            'Primary Brand Color',
+            style: JoynTypography.bodyLarge.copyWith(fontWeight: FontWeight.w700, fontSize: 14.5),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Used for invoice banners, headers, and total summary accents.',
+            style: JoynTypography.caption.copyWith(fontSize: 12, color: JoynColors.secondaryText),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: colorPresets.map((cp) {
+              final isChosen = _selectedInvoiceColor.toUpperCase() == (cp['hex'] as String).toUpperCase();
+              return GestureDetector(
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  setState(() => _selectedInvoiceColor = cp['hex'] as String);
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: cp['color'] as Color,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: isChosen ? Colors.white : Colors.transparent,
+                      width: 3,
+                    ),
+                    boxShadow: isChosen
+                        ? [
+                            BoxShadow(
+                              color: (cp['color'] as Color).withValues(alpha: 0.5),
+                              blurRadius: 10,
+                              spreadRadius: 2,
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: isChosen
+                      ? const Icon(Icons.check, color: Colors.white, size: 20)
+                      : null,
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUpiPaymentCard() {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: JoynColors.border, width: 1.2),
+        boxShadow: _Premium.cardShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Print Dynamic UPI QR on Invoices',
+                      style: JoynTypography.bodyLarge.copyWith(fontWeight: FontWeight.w700, fontSize: 14.5),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Allows customers to scan & pay exact amount in 1 tap',
+                      style: JoynTypography.caption.copyWith(fontSize: 12, color: JoynColors.secondaryText),
+                    ),
+                  ],
+                ),
+              ),
+              Switch.adaptive(
+                value: _showUpiQr,
+                activeTrackColor: JoynColors.primary,
+                onChanged: (val) {
+                  setState(() => _showUpiQr = val);
+                },
+              ),
+            ],
+          ),
+          if (_showUpiQr) ...[
+            const SizedBox(height: 16),
+            _buildFormField(
+              label: 'Merchant UPI ID (VPA)',
+              hintText: 'e.g. 8130820030@upi or store@hdfcbank',
+              controller: _upiIdController,
+              icon: Icons.alternate_email_rounded,
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0FDF4),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFBBF7D0)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.verified_rounded, size: 18, color: Color(0xFF059669)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'When customer scans with PhonePe, GPay, or Paytm, your store name and exact invoice amount will be filled automatically.',
+                      style: JoynTypography.caption.copyWith(fontSize: 12, color: const Color(0xFF065F46)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBankDetailsCard() {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: JoynColors.border, width: 1.2),
+        boxShadow: _Premium.cardShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Direct Bank Transfer Details',
+            style: JoynTypography.bodyLarge.copyWith(fontWeight: FontWeight.w700, fontSize: 14.5),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            'Printed on invoice footer for NEFT, IMPS, and RTGS payments.',
+            style: JoynTypography.caption.copyWith(fontSize: 12, color: JoynColors.secondaryText),
+          ),
+          const SizedBox(height: 16),
+          _buildFormField(
+            label: 'Bank Name',
+            hintText: 'e.g. HDFC Bank, SBI, ICICI Bank',
+            controller: _bankNameController,
+            icon: Icons.account_balance_rounded,
+          ),
+          const SizedBox(height: 14),
+          _buildFormField(
+            label: 'Account Number',
+            hintText: 'Enter bank account number',
+            controller: _accountNumberController,
+            icon: Icons.pin_outlined,
+            keyboardType: TextInputType.number,
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: _buildFormField(
+                  label: 'IFSC Code',
+                  hintText: 'e.g. HDFC0001234',
+                  controller: _ifscCodeController,
+                  icon: Icons.password_rounded,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildFormField(
+                  label: 'Branch Name',
+                  hintText: 'e.g. Noida Sec 62',
+                  controller: _branchNameController,
+                  icon: Icons.location_on_outlined,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInvoiceTermsCard() {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: JoynColors.border, width: 1.2),
+        boxShadow: _Premium.cardShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildFormField(
+            label: 'Default Invoice Terms & Conditions',
+            hintText: 'Enter payment due terms, warranty notes, exchange policy...',
+            controller: _invoiceTermsController,
+            icon: Icons.gavel_rounded,
+            maxLines: 4,
+          ),
+        ],
+      ),
     );
   }
 }

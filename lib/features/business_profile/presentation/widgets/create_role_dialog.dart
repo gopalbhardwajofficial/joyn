@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../core/theme/joyn_colors.dart';
 import '../../../../core/theme/joyn_typography.dart';
-import '../../../../core/widgets/joyn_button.dart';
 import '../../../team_management/models/team_member_model.dart';
 
 class CreateRoleDialog extends StatefulWidget {

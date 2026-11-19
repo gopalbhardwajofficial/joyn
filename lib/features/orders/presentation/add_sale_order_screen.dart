@@ -12,6 +12,8 @@ import '../data/sales_repository.dart';
 import 'widgets/add_order_item_dialog.dart';
 import '../../Inventory/presentation/add_new_party_screen.dart';
 import '../../Inventory/presentation/scan_code_screen.dart';
+import '../../business_profile/data/business_profile_repository.dart';
+import '../../../core/services/local_storage_service.dart';
 
 
 // ==================== Premium Helpers ====================
@@ -396,6 +398,7 @@ class _AddSaleOrderScreenState extends State<AddSaleOrderScreen> {
   bool _isReceivedChecked = false;
   bool _rateExclTax = true;
   bool _isOneTimeCustomer = false;
+  String? _selectedPartyId;
 
   String _paymentType = 'Cash';
   String _stateOfSupply = 'Select State';
@@ -478,6 +481,7 @@ class _AddSaleOrderScreenState extends State<AddSaleOrderScreen> {
         ? PaymentMode.credit
         : PaymentMode.cash;
 
+    _selectedPartyId = order.partyId.isNotEmpty ? order.partyId : null;
     _customerController.text = order.customerName;
     _phoneController.text = order.customerPhone;
     _isOneTimeCustomer = order.isOneTimeCustomer;
@@ -670,6 +674,9 @@ class _AddSaleOrderScreenState extends State<AddSaleOrderScreen> {
             : foundItem.purchasePrice,
         qty: 1,
         unit: foundItem.unit,
+        hsnSac: foundItem.hsnSac,
+        taxRate: foundItem.taxRatePercent,
+        taxInclusive: foundItem.salePriceTaxMode == PriceTaxMode.withTax,
       );
       setState(() {
         _items.add(newItem);
@@ -767,6 +774,7 @@ class _AddSaleOrderScreenState extends State<AddSaleOrderScreen> {
                           await _salesRepository.insertParty(newParty);
                           _loadSavedParties();
                           setState(() {
+                            _selectedPartyId = newParty.id;
                             _customerController.text = newParty.name;
                             _phoneController.text = newParty.contactNumber;
                           });
@@ -921,6 +929,7 @@ class _AddSaleOrderScreenState extends State<AddSaleOrderScreen> {
 
     if (selected != null) {
       setState(() {
+        _selectedPartyId = selected.id;
         _customerController.text = selected.name;
         _phoneController.text = selected.contactNumber;
       });
@@ -1127,7 +1136,9 @@ class _AddSaleOrderScreenState extends State<AddSaleOrderScreen> {
   }
 
   Future<void> _save({bool andNew = false}) async {
-    if (_customerController.text.trim().isEmpty) {
+    if (_isOneTimeCustomer && _customerController.text.trim().isEmpty) {
+      _customerController.text = 'One Time Customer';
+    } else if (_customerController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text('Customer name is required'),
         behavior: SnackBarBehavior.floating,
@@ -1145,20 +1156,29 @@ class _AddSaleOrderScreenState extends State<AddSaleOrderScreen> {
       date: _formattedDate,
       paymentMode: _paymentMode == PaymentMode.credit ? 'Credit' : 'Cash',
       isOneTimeCustomer: _isOneTimeCustomer,
+      partyId: _isOneTimeCustomer ? '' : (_selectedPartyId ?? ''),
       customerName: _customerController.text.trim(),
-      customerPhone: _phoneController.text.trim(),
+      customerPhone: _isOneTimeCustomer ? '' : _phoneController.text.trim(),
       items: _items
           .map((i) => {
         'name': i.itemName,
+        'itemName': i.itemName,
         'category': i.category,
         'unitPrice': i.unitPrice,
+        'rate': i.unitPrice,
         'qty': i.qty,
+        'quantity': i.qty,
         'discountAmount': i.discountAmount,
         'taxAmount': i.taxAmount,
         'taxRate': i.taxRate,
+        'taxRatePercent': i.taxRate,
         'taxInclusive': i.taxInclusive ? 1 : 0,
         'total': i.total,
         'unit': i.unit,
+        'hsnSac': i.hsnSac,
+        'hsnCode': i.hsnSac,
+        'cess': i.cess,
+        'additionalCess': i.additionalCess,
       })
           .toList(),
       totalAmount: total,
@@ -1194,6 +1214,7 @@ class _AddSaleOrderScreenState extends State<AddSaleOrderScreen> {
     if (andNew && !_isEditing) {
       setState(() {
         _invoiceNo++;
+        _selectedPartyId = null;
         _customerController.clear();
         _phoneController.clear();
         _totalAmountController.clear();
@@ -1215,8 +1236,38 @@ class _AddSaleOrderScreenState extends State<AddSaleOrderScreen> {
   }
 
   // ==================== Invoice Preview ====================
-  void _openInvoicePreview(SaleOrderModel order,
-      {bool popAfterClose = false}) {
+  Future<void> _openInvoicePreview(SaleOrderModel order,
+      {bool popAfterClose = false}) async {
+    final profile = await BusinessProfileRepository().getBusinessProfile();
+
+    final bizAddr = [
+      if (profile?.address.isNotEmpty == true) profile!.address,
+      if (profile?.city.isNotEmpty == true) profile!.city,
+      if (profile?.state.isNotEmpty == true) profile!.state,
+      if (profile?.pincode.isNotEmpty == true) profile!.pincode,
+    ].join(', ');
+
+    String resolvedBusinessName = (profile?.businessName.isNotEmpty == true && profile!.businessName != 'My Business')
+        ? profile!.businessName
+        : (LocalStorageService().businessName.isNotEmpty
+            ? LocalStorageService().businessName
+            : 'JOYN Enterprise');
+
+    String custAddress = '';
+    if (order.partyId.isNotEmpty && !_isOneTimeCustomer) {
+      try {
+        final party = await _salesRepository.getPartyById(order.partyId);
+        if (party != null) {
+          custAddress = [
+            if (party.address.isNotEmpty) party.address,
+            if (party.city.isNotEmpty) party.city,
+          ].join(', ');
+        }
+      } catch (_) {}
+    }
+
+    if (!mounted) return;
+
     Navigator.of(context)
         .push(MaterialPageRoute(
       builder: (_) => InvoicePreviewScreen(
@@ -1230,9 +1281,21 @@ class _AddSaleOrderScreenState extends State<AddSaleOrderScreen> {
           items: List<OrderItemModel>.from(_items),
           totalAmount: order.totalAmount,
           receivedAmount: order.receivedAmount,
-          businessName: 'Your Business',
-          businessPhone: '9958761582',
-          businessEmail: 'you@example.com',
+          businessName: resolvedBusinessName,
+          businessPhone: profile?.phone1 ?? LocalStorageService().phoneNumber,
+          businessEmail: profile?.email ?? LocalStorageService().email,
+          businessAddress: bizAddr,
+          businessGstin: profile?.gstNumber ?? '',
+          customerAddress: custAddress,
+          stateOfSupply: order.stateOfSupply,
+          paymentMode: order.paymentType,
+          termsAndConditions: order.termsAndConditions,
+          logoPath: profile?.logoPath,
+          logoUrl: profile?.logoUrl,
+          bankName: profile?.bankName ?? '',
+          accountNumber: profile?.accountNumber ?? '',
+          ifscCode: profile?.ifscCode ?? '',
+          upiId: profile?.upiId ?? '',
           title: 'Tax Invoice',
         ),
       ),
@@ -1695,8 +1758,13 @@ class _AddSaleOrderScreenState extends State<AddSaleOrderScreen> {
                   setState(() {
                     _isOneTimeCustomer = !_isOneTimeCustomer;
                     if (_isOneTimeCustomer) {
-                      _customerController.clear();
+                      _customerController.text = 'One Time Customer';
                       _phoneController.clear();
+                      _selectedPartyId = null;
+                    } else {
+                      if (_customerController.text == 'One Time Customer') {
+                        _customerController.clear();
+                      }
                     }
                   });
                 },
@@ -1766,7 +1834,7 @@ class _AddSaleOrderScreenState extends State<AddSaleOrderScreen> {
             label: 'Customer Name *',
             controller: _customerController,
             icon: Icons.person_outline_rounded,
-            hint: 'Enter customer name',
+            hint: 'One Time Customer',
             textCapitalization: TextCapitalization.words,
             onChanged: (_) => setState(() {}),
           )
@@ -1778,13 +1846,15 @@ class _AddSaleOrderScreenState extends State<AddSaleOrderScreen> {
             enabled: false,
             hint: 'Tap to select customer',
           ),
-          const SizedBox(height: 14),
-          _premiumField(
-            label: 'Phone Number',
-            controller: _phoneController,
-            icon: Icons.call_outlined,
-            keyboardType: TextInputType.phone,
-          ),
+          if (!_isOneTimeCustomer) ...[
+            const SizedBox(height: 14),
+            _premiumField(
+              label: 'Phone Number',
+              controller: _phoneController,
+              icon: Icons.call_outlined,
+              keyboardType: TextInputType.phone,
+            ),
+          ],
         ],
       ),
     );
@@ -1921,6 +1991,9 @@ class _AddSaleOrderScreenState extends State<AddSaleOrderScreen> {
                       unitPrice: price,
                       qty: 1,
                       unit: item.unit,
+                      hsnSac: item.hsnSac,
+                      taxRate: item.taxRatePercent,
+                      taxInclusive: item.salePriceTaxMode == PriceTaxMode.withTax,
                     );
                     setState(() {
                       _items.add(newItem);

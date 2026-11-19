@@ -1,12 +1,11 @@
 // lib/features/dashboard/presentation/dashboard_screen.dart
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:joyn/features/Inventory/presentation/add_new_party_screen.dart';
 import 'package:joyn/features/Inventory/presentation/payment_in_screen.dart';
 import 'package:joyn/features/orders/presentation/sale_orders_list_screen.dart';
-import 'package:joyn/features/orders/presentation/purchase_orders_list_screen.dart';
 import 'package:joyn/features/orders/models/sales_models.dart';
 import 'package:joyn/features/orders/data/sales_repository.dart';
 import '../../../core/theme/joyn_colors.dart';
@@ -14,11 +13,13 @@ import '../../../core/theme/joyn_typography.dart';
 import '../../auth/providers/auth_provider.dart';
 import 'business_setup_bottom_sheet.dart';
 import 'package:joyn/core/widgets/joyn_logout_dialog.dart';
+import 'package:joyn/features/barcode/flashlabel/screens/new_label_screen.dart';
 import 'package:joyn/features/barcode/presentation/newlable_screen.dart';
 import 'package:joyn/features/barcode/presentation/label_editor_screen.dart';
-import '../../Inventory/presentation/manage_inventory_screen.dart';
 import 'package:joyn/features/reports/Presentation/overview_screen.dart';
 import 'package:joyn/features/reports/Presentation/reports_screen.dart';
+import '../../../core/services/sync_service.dart';
+import '../../../core/services/api_service.dart';
 
 class _DashColors {
   static const pageBackground = Color.fromRGBO(221, 221, 221, 1);
@@ -54,6 +55,7 @@ class DashboardScreen extends ConsumerStatefulWidget {
 class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   int _bottomNavIndex = 0;
   bool _hasTriggeredPopup = false;
+  int _unreadNotifications = 0;
 
   /// Home tab ke andar toggle: 0 = Dashboard, 1 = Overview
   int _homeTabIndex = 0;
@@ -61,12 +63,28 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    _fetchUnreadNotifications();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_hasTriggeredPopup && widget.autoShowSetup && mounted) {
         _hasTriggeredPopup = true;
         _showBusinessSetupPopup();
       }
+      // Silently reconcile pending offline mutations with cloud in background
+      SyncService.getInstance()
+          .then((s) => s.performFullSync())
+          .catchError((_) => <String, dynamic>{'success': false});
     });
+  }
+
+  Future<void> _fetchUnreadNotifications() async {
+    try {
+      final res = await ApiService.getNotifications(limit: 1);
+      if (res['success'] == true && mounted) {
+        setState(() {
+          _unreadNotifications = res['unreadCount'] ?? 0;
+        });
+      }
+    } catch (_) {}
   }
 
   void _showBusinessSetupPopup() {
@@ -121,6 +139,47 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 onTap: () {
                   Navigator.pop(context);
                   context.push('/business-profile');
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.notifications_outlined, color: JoynColors.primary),
+                title: Text('Notifications', style: JoynTypography.bodyLarge.copyWith(fontSize: 15)),
+                subtitle: Text('Alerts, stock warnings & system messages', style: JoynTypography.bodySmall.copyWith(fontSize: 12, color: JoynColors.secondaryText)),
+                trailing: _unreadNotifications > 0
+                    ? Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEF4444),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          '$_unreadNotifications',
+                          style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700),
+                        ),
+                      )
+                    : null,
+                onTap: () {
+                  Navigator.pop(context);
+                  setState(() => _unreadNotifications = 0);
+                  context.push('/notifications').then((_) => _fetchUnreadNotifications());
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.currency_rupee_rounded, color: JoynColors.primary),
+                title: Text('Payment Reminders', style: JoynTypography.bodyLarge.copyWith(fontSize: 15)),
+                subtitle: Text('Overdue debtors, WhatsApp reminders & UPI payment links', style: JoynTypography.bodySmall.copyWith(fontSize: 12, color: JoynColors.secondaryText)),
+                onTap: () {
+                  Navigator.pop(context);
+                  context.push('/payment-reminders');
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.cloud_sync_outlined, color: JoynColors.primary),
+                title: Text('Cloud Backup & Sync', style: JoynTypography.bodyLarge.copyWith(fontSize: 15)),
+                subtitle: Text('Manage automatic sync and cloud database backups', style: JoynTypography.bodySmall.copyWith(fontSize: 12, color: JoynColors.secondaryText)),
+                onTap: () {
+                  Navigator.pop(context);
+                  context.push('/cloud-backup');
                 },
               ),
               ListTile(
@@ -263,10 +322,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         body = _buildHomeView();
         break;
       case 1:
-        body = const SaleOrdersListScreen();
+        body = authState.permissions.accessSales
+            ? const SaleOrdersListScreen()
+            : _buildAccessDeniedView('Sales', authState.userRole);
         break;
       case 2:
-        body = const ReportsScreen();
+        body = authState.permissions.accessReports
+            ? const ReportsScreen()
+            : _buildAccessDeniedView('Reports', authState.userRole);
         break;
       case 3:
         body = _buildMoreView();
@@ -347,6 +410,88 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               ),
             ),
             InkWell(
+              onTap: () => context.push('/cloud-backup'),
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: _DashColors.cardBackground,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: JoynColors.border, width: 1),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.04),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.cloud_sync_outlined,
+                  color: JoynColors.primary,
+                  size: 20,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            InkWell(
+              onTap: () {
+                setState(() => _unreadNotifications = 0);
+                context.push('/notifications').then((_) => _fetchUnreadNotifications());
+              },
+              borderRadius: BorderRadius.circular(12),
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: _DashColors.cardBackground,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: JoynColors.border, width: 1),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.04),
+                          blurRadius: 6,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.notifications_outlined,
+                      color: JoynColors.primary,
+                      size: 20,
+                    ),
+                  ),
+                  if (_unreadNotifications > 0)
+                    Positioned(
+                      top: -2,
+                      right: -2,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFEF4444),
+                          shape: BoxShape.circle,
+                        ),
+                        constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                        child: Text(
+                          _unreadNotifications > 9 ? '9+' : '$_unreadNotifications',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            InkWell(
               onTap: _showSettingsMenu,
               borderRadius: BorderRadius.circular(12),
               child: Container(
@@ -406,6 +551,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             child: BottomNavigationBar(
               currentIndex: _bottomNavIndex,
               onTap: (index) {
+                if (index == 1 && !authState.permissions.accessSales) {
+                  _showSnack('Access Restricted: Your role (${authState.userRole}) does not have permission to access Sales.', isError: true);
+                  return;
+                }
+                if (index == 2 && !authState.permissions.accessReports) {
+                  _showSnack('Access Restricted: Your role (${authState.userRole}) does not have permission to access Reports.', isError: true);
+                  return;
+                }
                 setState(() {
                   _bottomNavIndex = index;
                 });
@@ -423,20 +576,28 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 fontWeight: FontWeight.w500,
                 fontSize: 11.5,
               ),
-              items: const [
-                BottomNavigationBarItem(
+              items: [
+                const BottomNavigationBarItem(
                   icon: Icon(Icons.home_rounded),
                   label: 'Home',
                 ),
                 BottomNavigationBarItem(
-                  icon: Icon(Icons.shopping_cart_outlined),
+                  icon: Icon(
+                    authState.permissions.accessSales
+                        ? Icons.shopping_cart_outlined
+                        : Icons.lock_outline_rounded,
+                  ),
                   label: 'Sales',
                 ),
                 BottomNavigationBarItem(
-                  icon: Icon(Icons.file_copy),
+                  icon: Icon(
+                    authState.permissions.accessReports
+                        ? Icons.file_copy
+                        : Icons.lock_outline_rounded,
+                  ),
                   label: 'Reports',
                 ),
-                BottomNavigationBarItem(
+                const BottomNavigationBarItem(
                   icon: Icon(Icons.more_horiz_rounded),
                   label: 'More',
                 ),
@@ -615,6 +776,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 
   Widget _buildDashboardSectionCardsList() {
+    final authState = ref.watch(authProvider);
+    final permissions = authState.permissions;
+    final userRole = authState.userRole;
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
       children: [
@@ -624,6 +789,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           subtitle: 'Manage all your sales',
           primaryActionLabel: 'Add',
           accent: const Color(0xFF16A34A),
+          isEnabled: permissions.accessSales,
+          disabledReason: 'Role ($userRole) has no Sales access',
           onPrimaryTap: () => context.push('/add-sale-order'),
           onArrowTap: () => context.push('/sale-orders-list'),
         ),
@@ -634,6 +801,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           subtitle: 'Manage all your purchases',
           primaryActionLabel: 'Add',
           accent: const Color(0xFFEA580C),
+          isEnabled: permissions.accessPurchase,
+          disabledReason: 'Role ($userRole) has no Purchase access',
           onPrimaryTap: () => context.push('/add-purchase-order'),
           onArrowTap: () => context.push('/purchase-orders-list'),
         ),
@@ -644,6 +813,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           subtitle: 'Manage all your parties',
           primaryActionLabel: 'Add',
           accent: const Color(0xFF2563EB),
+          isEnabled: permissions.accessPartyDetails,
+          disabledReason: 'Role ($userRole) has no Party access',
           onPrimaryTap: () => context.push('/add-party'),
           onArrowTap: () => context.push('/party-list'),
         ),
@@ -654,6 +825,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           subtitle: 'Manage your item catalog',
           primaryActionLabel: 'Add',
           accent: const Color(0xFF0891B2),
+          isEnabled: permissions.accessInventory,
+          disabledReason: 'Role ($userRole) has no Inventory access',
           onPrimaryTap: () => context.push('/add-new-item'),
           onArrowTap: () => context.push('/items-list'),
         ),
@@ -664,11 +837,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           subtitle: 'Manage your inventory',
           primaryActionLabel: 'Add',
           accent: const Color(0xFF7C3AED),
+          isEnabled: permissions.accessInventory,
+          disabledReason: 'Role ($userRole) has no Inventory access',
           onPrimaryTap: () => context.push('/add-inventory'),
           onArrowTap: () => context.push('/manage-inventory'),
         ),
         const SizedBox(height: 16),
-        _buildBarcodeCard(),
+        _buildBarcodeCard(
+          isEnabled: permissions.accessInventory,
+          userRole: userRole,
+        ),
         const SizedBox(height: 16),
 
         // ── PAYMENT IN / OUT BUTTONS ──
@@ -679,6 +857,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 icon: Icons.arrow_downward_rounded,
                 label: 'Payment IN',
                 color: const Color(0xFF16A34A),
+                isEnabled: permissions.accessSales,
+                disabledReason: 'Role ($userRole) has no Payment IN access',
                 onTap: () => _openPaymentFlow(isPaymentOut: false),
               ),
             ),
@@ -688,6 +868,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 icon: Icons.arrow_upward_rounded,
                 label: 'Payment OUT',
                 color: const Color(0xFFC0202B),
+                isEnabled: permissions.accessPurchase,
+                disabledReason: 'Role ($userRole) has no Payment OUT access',
                 onTap: () => _openPaymentFlow(isPaymentOut: true),
               ),
             ),
@@ -698,44 +880,49 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
-  Widget _buildBarcodeCard() {
+  Widget _buildBarcodeCard({bool isEnabled = true, String userRole = 'Staff'}) {
     return GestureDetector(
-      onTap: () async {
-        final result = await Navigator.push<LabelSizeResult>(
-          context,
-          MaterialPageRoute(builder: (_) => const NewLabelSizeScreen()),
-        );
-        if (result != null && context.mounted) {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => LabelEditorScreen(labelSize: result),
-            ),
-          );
+      onTap: () {
+        if (!isEnabled) {
+          HapticFeedback.lightImpact();
+          _showSnack('Access Restricted: Role ($userRole) does not have permission for Barcodes/Inventory.', isError: true);
+          return;
         }
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const NewLabelScreen()),
+        );
       },
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFF2563EB), Color(0xFF1D4ED8)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
+          gradient: isEnabled
+              ? const LinearGradient(
+                  colors: [Color(0xFF2563EB), Color(0xFF1D4ED8)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                )
+              : const LinearGradient(
+                  colors: [Color(0xFF94A3B8), Color(0xFF64748B)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
           borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF2563EB).withValues(alpha: 0.30),
-              blurRadius: 16,
-              offset: const Offset(0, 6),
-            ),
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 3,
-              offset: const Offset(0, 1),
-            ),
-          ],
+          boxShadow: isEnabled
+              ? [
+                  BoxShadow(
+                    color: const Color(0xFF2563EB).withValues(alpha: 0.30),
+                    blurRadius: 16,
+                    offset: const Offset(0, 6),
+                  ),
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 3,
+                    offset: const Offset(0, 1),
+                  ),
+                ]
+              : [],
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -753,11 +940,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   width: 1,
                 ),
               ),
-              child: const Icon(Icons.add_rounded, size: 18, color: Colors.white),
+              child: Icon(isEnabled ? Icons.add_rounded : Icons.lock_rounded, size: 18, color: Colors.white),
             ),
             const SizedBox(height: 5),
             Text(
-              'Barcodes & QR',
+              isEnabled ? 'Barcodes & QR' : 'Barcodes & QR (Locked)',
               style: JoynTypography.bodyLarge.copyWith(
                 fontWeight: FontWeight.w800,
                 fontSize: 13.5,
@@ -770,9 +957,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 2),
-            const Text(
-              'Generate new barcodes / QR codes',
-              style: TextStyle(
+            Text(
+              isEnabled ? 'Generate new barcodes / QR codes' : 'Access restricted by firm owner',
+              style: const TextStyle(
                 color: Colors.white70,
                 fontSize: 11,
                 height: 1.2,
@@ -793,31 +980,45 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     required String label,
     required Color color,
     required VoidCallback onTap,
+    bool isEnabled = true,
+    String? disabledReason,
   }) {
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            color,
-            Color.lerp(color, Colors.black, 0.20) ?? color,
-          ],
+          colors: isEnabled
+              ? [
+                  color,
+                  Color.lerp(color, Colors.black, 0.20) ?? color,
+                ]
+              : [
+                  const Color(0xFF94A3B8),
+                  const Color(0xFF64748B),
+                ],
         ),
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: color.withValues(alpha: 0.35),
-            blurRadius: 14,
-            offset: const Offset(0, 6),
-          ),
-        ],
+        boxShadow: isEnabled
+            ? [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.35),
+                  blurRadius: 14,
+                  offset: const Offset(0, 6),
+                ),
+              ]
+            : [],
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
-          onTap: onTap,
+          onTap: isEnabled
+              ? onTap
+              : () {
+                  HapticFeedback.lightImpact();
+                  _showSnack(disabledReason ?? 'Access Restricted: Your role does not have permission for $label.', isError: true);
+                },
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 16),
             child: Row(
@@ -830,7 +1031,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     color: Colors.white.withValues(alpha: 0.22),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(icon, size: 17, color: Colors.white),
+                  child: Icon(isEnabled ? icon : Icons.lock_rounded, size: 17, color: Colors.white),
                 ),
                 const SizedBox(width: 10),
                 Text(
@@ -858,25 +1059,33 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     required Color accent,
     VoidCallback? onPrimaryTap,
     VoidCallback? onArrowTap,
+    bool isEnabled = true,
+    String? disabledReason,
   }) {
+    final effectiveColor = isEnabled ? accent : const Color(0xFF94A3B8);
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isEnabled ? Colors.white : const Color(0xFFFAFAFB),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: _DashColors.cardBorder, width: 1),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 2,
-            offset: const Offset(0, 1),
-          ),
-        ],
+        border: Border.all(
+          color: isEnabled ? _DashColors.cardBorder : const Color(0xFFE2E8F0),
+          width: 1,
+        ),
+        boxShadow: isEnabled
+            ? [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6),
+                ),
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.02),
+                  blurRadius: 2,
+                  offset: const Offset(0, 1),
+                ),
+              ]
+            : [],
       ),
       child: Row(
         children: [
@@ -888,17 +1097,17 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  accent.withValues(alpha: 0.14),
-                  accent.withValues(alpha: 0.06),
+                  effectiveColor.withValues(alpha: 0.14),
+                  effectiveColor.withValues(alpha: 0.06),
                 ],
               ),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: accent.withValues(alpha: 0.18),
+                color: effectiveColor.withValues(alpha: 0.18),
                 width: 1,
               ),
             ),
-            child: Icon(mainIcon, color: accent, size: 22),
+            child: Icon(mainIcon, color: effectiveColor, size: 22),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -906,20 +1115,53 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  title,
-                  style: JoynTypography.bodyLarge.copyWith(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 15,
-                    letterSpacing: -0.2,
-                    color: const Color(0xFF16171D),
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        title,
+                        style: JoynTypography.bodyLarge.copyWith(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 15,
+                          letterSpacing: -0.2,
+                          color: isEnabled ? const Color(0xFF16171D) : const Color(0xFF64748B),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (!isEnabled) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(5),
+                          border: Border.all(color: const Color(0xFFCBD5E1), width: 0.8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.lock_rounded, size: 9, color: Color(0xFF64748B)),
+                            const SizedBox(width: 2.5),
+                            Text(
+                              'LOCKED',
+                              style: JoynTypography.caption.copyWith(
+                                fontSize: 8.5,
+                                fontWeight: FontWeight.w800,
+                                color: const Color(0xFF64748B),
+                                letterSpacing: 0.3,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  subtitle,
+                  isEnabled ? subtitle : (disabledReason ?? 'Disabled for your role'),
                   style: JoynTypography.subtitle.copyWith(
                     fontSize: 11.5,
                     color: const Color(0xFF8A8D99),
@@ -932,96 +1174,184 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             ),
           ),
           const SizedBox(width: 8),
-          Tooltip(
-            message: primaryActionLabel,
-            child: Material(
+          if (isEnabled) ...[
+            Tooltip(
+              message: primaryActionLabel,
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: onPrimaryTap,
+                  borderRadius: BorderRadius.circular(14),
+                  child: Container(
+                    width: 54,
+                    height: 46,
+                    padding: const EdgeInsets.symmetric(vertical: 5),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          _DashColors.addButtonStart,
+                          _DashColors.addButtonEnd,
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: [
+                        BoxShadow(
+                          color: _DashColors.addButtonStart.withValues(alpha: 0.35),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.add_rounded, size: 17, color: _DashColors.addButtonText),
+                        const SizedBox(height: 1),
+                        Text(
+                          primaryActionLabel.replaceFirst('Add ', ''),
+                          style: JoynTypography.caption.copyWith(
+                            color: _DashColors.addButtonText,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 9,
+                            height: 1,
+                            letterSpacing: 0.1,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Material(
               color: Colors.transparent,
               child: InkWell(
-                onTap: onPrimaryTap,
-                borderRadius: BorderRadius.circular(14),
+                onTap: onArrowTap ?? onPrimaryTap,
+                borderRadius: BorderRadius.circular(17),
                 child: Container(
-                  width: 54,
-                  height: 46,
-                  padding: const EdgeInsets.symmetric(vertical: 5),
+                  width: 36,
+                  height: 36,
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: [
-                        _DashColors.addButtonStart,
-                        _DashColors.addButtonEnd,
+                        _DashColors.arrowButtonStart,
+                        _DashColors.arrowButtonEnd,
                       ],
                     ),
-                    borderRadius: BorderRadius.circular(14),
+                    shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: _DashColors.addButtonStart.withValues(alpha: 0.35),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
+                        color: Colors.black.withValues(alpha: 0.20),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
                       ),
                     ],
                   ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                  child: const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 16),
+                ),
+              ),
+            ),
+          ] else ...[
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  _showSnack(disabledReason ?? 'Access Restricted: Your role does not have permission to access $title.', isError: true);
+                },
+                borderRadius: BorderRadius.circular(14),
+                child: Container(
+                  height: 46,
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: const Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.add_rounded, size: 17, color: _DashColors.addButtonText),
-                      const SizedBox(height: 1),
-                      Text(
-                        primaryActionLabel.replaceFirst('Add ', ''),
-                        style: JoynTypography.caption.copyWith(
-                          color: _DashColors.addButtonText,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 9,
-                          height: 1,
-                          letterSpacing: 0.1,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                      Icon(Icons.lock_outline_rounded, size: 16, color: Color(0xFF94A3B8)),
+                      SizedBox(width: 4),
+                      Icon(Icons.chevron_right_rounded, size: 16, color: Color(0xFF94A3B8)),
                     ],
                   ),
                 ),
               ),
             ),
-          ),
-          const SizedBox(width: 8),
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: onArrowTap ?? onPrimaryTap,
-              borderRadius: BorderRadius.circular(17),
-              child: Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      _DashColors.arrowButtonStart,
-                      _DashColors.arrowButtonEnd,
-                    ],
-                  ),
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.20),
-                      blurRadius: 8,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
-                ),
-                child: const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 16),
-              ),
-            ),
-          ),
+          ],
         ],
       ),
     );
   }
 
+  Widget _buildAccessDeniedView(String module, String role) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEE2E2),
+                shape: BoxShape.circle,
+                border: Border.all(color: const Color(0xFFFCA5A5), width: 1.5),
+              ),
+              child: const Icon(Icons.lock_rounded, size: 36, color: Color(0xFFDC2626)),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'Access Restricted',
+              style: JoynTypography.titleMedium.copyWith(
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                color: JoynColors.primary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Your role ($role) does not have permission to access the $module module in this business.',
+              textAlign: TextAlign.center,
+              style: JoynTypography.subtitle.copyWith(
+                fontSize: 13.5,
+                color: JoynColors.secondaryText,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: () => setState(() => _bottomNavIndex = 0),
+              icon: const Icon(Icons.home_rounded, size: 18),
+              label: const Text('Back to Home'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: JoynColors.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildMoreView() {
+    final authState = ref.watch(authProvider);
+    final permissions = authState.permissions;
+    final userRole = authState.userRole;
+
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -1043,8 +1373,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           ),
           const SizedBox(height: 24),
           ElevatedButton.icon(
-            onPressed: () => context.push('/manage-inventory'),
-            icon: const Icon(Icons.inventory_2_outlined),
+            onPressed: () {
+              if (!permissions.accessInventory) {
+                _showSnack('Access Restricted: Your role ($userRole) does not have permission to access Inventory.', isError: true);
+                return;
+              }
+              context.push('/manage-inventory');
+            },
+            icon: Icon(permissions.accessInventory ? Icons.inventory_2_outlined : Icons.lock_outline_rounded),
             label: const Text('Manage Inventory'),
             style: ElevatedButton.styleFrom(
               backgroundColor: JoynColors.primary,
@@ -1055,8 +1391,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           ),
           const SizedBox(height: 12),
           ElevatedButton.icon(
-            onPressed: () => context.push('/party-list'),
-            icon: const Icon(Icons.people_outline_rounded),
+            onPressed: () {
+              if (!permissions.accessPartyDetails) {
+                _showSnack('Access Restricted: Your role ($userRole) does not have permission to access Parties.', isError: true);
+                return;
+              }
+              context.push('/party-list');
+            },
+            icon: Icon(permissions.accessPartyDetails ? Icons.people_outline_rounded : Icons.lock_outline_rounded),
             label: const Text('Manage Parties'),
             style: ElevatedButton.styleFrom(
               backgroundColor: JoynColors.primary,
@@ -1067,11 +1409,46 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           ),
           const SizedBox(height: 12),
           ElevatedButton.icon(
-            onPressed: () => context.push('/items-list'),
-            icon: const Icon(Icons.category_outlined),
+            onPressed: () {
+              if (!permissions.accessInventory) {
+                _showSnack('Access Restricted: Your role ($userRole) does not have permission to access Items.', isError: true);
+                return;
+              }
+              context.push('/items-list');
+            },
+            icon: Icon(permissions.accessInventory ? Icons.category_outlined : Icons.lock_outline_rounded),
             label: const Text('Manage Items'),
             style: ElevatedButton.styleFrom(
               backgroundColor: JoynColors.primary,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          ),
+          const SizedBox(height: 12),
+          ElevatedButton.icon(
+            onPressed: () {
+              context.push('/payment-reminders');
+            },
+            icon: const Icon(Icons.currency_rupee_rounded),
+            label: const Text('Payment Reminders & Debtors'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF4338CA),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          ),
+          const SizedBox(height: 12),
+          ElevatedButton.icon(
+            onPressed: () {
+              setState(() => _unreadNotifications = 0);
+              context.push('/notifications').then((_) => _fetchUnreadNotifications());
+            },
+            icon: const Icon(Icons.notifications_outlined),
+            label: Text(_unreadNotifications > 0 ? 'Notifications ($_unreadNotifications new)' : 'Notifications Feed'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF1E293B),
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

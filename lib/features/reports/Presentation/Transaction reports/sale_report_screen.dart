@@ -4,6 +4,8 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/theme/joyn_colors.dart';
 import '../../../../core/theme/joyn_typography.dart';
+import '../../../../core/services/report_export_service.dart';
+import '../../../orders/data/sales_repository.dart';
 
 enum ReportPeriod { today, thisWeek, thisMonth, thisQuarter, thisFinancialYear, custom }
 
@@ -84,36 +86,40 @@ class _SaleReportScreenState extends State<SaleReportScreen> {
   DateTimeRange? _customRange;
   TxnTypeFilter _txnTypeFilter = TxnTypeFilter.saleAndCreditNote;
   String? _partyFilter;
-  late List<SaleReportEntry> _allSales;
+  List<SaleReportEntry> _allSales = [];
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _allSales = _loadSampleSales();
+    _loadRealSales();
   }
 
-  List<SaleReportEntry> _loadSampleSales() {
-    final now = DateTime.now();
-    return [
-      SaleReportEntry(
-        id: 'sale_2',
-        invoiceNo: 2,
-        partyName: 'gill',
-        phone: '9958761582',
-        date: DateTime(now.year, now.month, 5),
-        items: const [SaleLineItemModel(name: 'Pasta', qty: 1, unit: 'Btl', rate: 100)],
-        received: 0,
-      ),
-      SaleReportEntry(
-        id: 'sale_1',
-        invoiceNo: 1,
-        partyName: 'Gopal',
-        phone: '9876543210',
-        date: DateTime(now.year, now.month, 5),
-        items: const [SaleLineItemModel(name: 'Rice Bag', qty: 2, unit: 'Bag', rate: 500)],
-        received: 500,
-      ),
-    ];
+  Future<void> _loadRealSales() async {
+    try {
+      final orders = await SalesRepository().getSaleOrders();
+      if (mounted) {
+        setState(() {
+          _allSales = orders.map((o) => SaleReportEntry(
+            id: o.id,
+            invoiceNo: o.invoiceNo,
+            partyName: o.customerName.isNotEmpty ? o.customerName : 'Cash Customer',
+            phone: o.customerPhone,
+            date: DateTime.tryParse(o.date) ?? o.createdAt,
+            items: o.items.map((i) => SaleLineItemModel(
+              name: (i['name'] ?? i['itemName'] ?? '').toString(),
+              qty: (i['qty'] as num?)?.toDouble() ?? 1.0,
+              unit: (i['unit'] ?? '').toString(),
+              rate: (i['rate'] ?? i['unitPrice'] ?? 0 as num).toDouble(),
+            )).toList(),
+            received: o.receivedAmount,
+          )).toList();
+          _isLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   DateTimeRange _rangeForPeriod(ReportPeriod period) {
@@ -227,24 +233,17 @@ class _SaleReportScreenState extends State<SaleReportScreen> {
         ),
         actions: [
           _buildAppBarIconButton(
-            label: 'CA',
-            icon: Icons.file_upload_rounded,
-            color: const Color(0xFF2563EB),
-            onTap: _showCaShareDialog,
-          ),
-          const SizedBox(width: 6),
-          _buildAppBarIconButton(
             label: 'Pdf',
             icon: Icons.picture_as_pdf_rounded,
             color: const Color(0xFFDC2626),
-            onTap: _showPdfOptions,
+            onTap: () => _showRealPdfOptions(filtered, totalSale, balanceDue, range, dateFmt),
           ),
           const SizedBox(width: 6),
           _buildAppBarIconButton(
             label: 'xls',
             icon: Icons.grid_on_rounded,
             color: JoynColors.success,
-            onTap: _showExcelOptions,
+            onTap: () => _showRealExcelOptions(filtered, totalSale, balanceDue, range, dateFmt),
           ),
           const SizedBox(width: 12),
         ],
@@ -1522,329 +1521,74 @@ class _SaleReportScreenState extends State<SaleReportScreen> {
     );
   }
 
-  // ---------------- CA Share Dialog ----------------
-  Future<void> _showCaShareDialog() async {
-    final nameController = TextEditingController();
-    final emailController = TextEditingController();
-    final whatsappController = TextEditingController();
+  // ---------------- Real PDF / Excel Export Engine ----------------
+  Future<void> _showRealPdfOptions(
+    List<SaleReportEntry> entries,
+    double totalSale,
+    double balanceDue,
+    DateTimeRange range,
+    DateFormat dateFmt,
+  ) async {
+    final periodStr = '${dateFmt.format(range.start)} - ${dateFmt.format(range.end)}';
+    final tableHeaders = ['Date', 'Invoice #', 'Party Name', 'Status', 'Total', 'Received', 'Balance'];
+    final tableRows = entries.map((s) => [
+      dateFmt.format(s.date),
+      '#${s.invoiceNo}',
+      s.partyName,
+      s.typeLabel,
+      '₹${_fmt(s.totalAmount)}',
+      '₹${_fmt(s.received)}',
+      '₹${_fmt(s.balanceDue)}',
+    ]).toList();
 
-    await showModalBottomSheet<void>(
+    final summary = {
+      'Total Invoices': '${entries.length}',
+      'Total Sales': '₹${_fmt(totalSale)}',
+      'Total Balance Due': '₹${_fmt(balanceDue)}',
+    };
+
+    await ReportExportService.showPdfOptionsSheet(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: JoynColors.background,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (sheetContext) {
-        return Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
-          child: SafeArea(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'Share Reports with your CA',
-                          style: JoynTypography.titleMedium.copyWith(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        icon: Icon(Icons.close_rounded, color: JoynColors.secondaryText),
-                        onPressed: () => Navigator.pop(sheetContext),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Container(
-                    width: double.infinity,
-                    height: 120,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          JoynColors.success.withValues(alpha: 0.1),
-                          JoynColors.success.withValues(alpha: 0.02),
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Center(
-                      child: Icon(
-                        Icons.forward_to_inbox_rounded,
-                        size: 48,
-                        color: JoynColors.success.withValues(alpha: 0.5),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Text(
-                    "CA's Name",
-                    style: JoynTypography.caption.copyWith(
-                      fontSize: 11,
-                      color: JoynColors.secondaryText,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  _buildTextInput(nameController, hint: 'Enter CA name'),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Text(
-                        "CA's Email",
-                        style: JoynTypography.caption.copyWith(
-                          fontSize: 11,
-                          color: JoynColors.secondaryText,
-                        ),
-                      ),
-                      Text(' *', style: TextStyle(color: JoynColors.error)),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  _buildTextInput(emailController, hint: 'Enter email', keyboardType: TextInputType.emailAddress),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Text(
-                        "CA's WhatsApp Number",
-                        style: JoynTypography.caption.copyWith(
-                          fontSize: 11,
-                          color: JoynColors.secondaryText,
-                        ),
-                      ),
-                      Text(' *', style: TextStyle(color: JoynColors.error)),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Container(
-                    decoration: BoxDecoration(
-                      border: Border.all(color: JoynColors.border),
-                      borderRadius: BorderRadius.circular(8),
-                      color: JoynColors.surface,
-                    ),
-                    child: Row(
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 14),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: const [
-                              Text('🇮🇳', style: TextStyle(fontSize: 16)),
-                              SizedBox(width: 6),
-                              Text('+91', style: TextStyle(fontSize: 14)),
-                              Icon(Icons.keyboard_arrow_down_rounded, size: 16),
-                            ],
-                          ),
-                        ),
-                        Container(width: 1, height: 24, color: JoynColors.border),
-                        Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 10),
-                            child: TextField(
-                              controller: whatsappController,
-                              keyboardType: TextInputType.phone,
-                              decoration: const InputDecoration(
-                                border: InputBorder.none,
-                                isDense: true,
-                                contentPadding: EdgeInsets.symmetric(vertical: 14),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () => Navigator.pop(sheetContext),
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            side: BorderSide(color: JoynColors.border),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-                            backgroundColor: JoynColors.surface,
-                          ),
-                          child: Text(
-                            'Cancel',
-                            style: JoynTypography.bodyLarge.copyWith(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed: () {
-                            Navigator.pop(sheetContext);
-                            _showSnackBar('Report shared with CA successfully!');
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: JoynColors.primary,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-                          ),
-                          child: Text(
-                            'Send',
-                            style: JoynTypography.buttonText.copyWith(fontSize: 14),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
+      title: 'Sale Report',
+      periodLabel: periodStr,
+      summaryStats: summary,
+      tableHeaders: tableHeaders,
+      tableRows: tableRows,
     );
   }
 
-  Widget _buildTextInput(
-      TextEditingController controller, {
-        required String hint,
-        TextInputType keyboardType = TextInputType.text,
-      }) {
-    return Container(
-      decoration: BoxDecoration(
-        border: Border.all(color: JoynColors.border),
-        borderRadius: BorderRadius.circular(8),
-        color: JoynColors.surface,
-      ),
-      child: TextField(
-        controller: controller,
-        keyboardType: keyboardType,
-        decoration: InputDecoration(
-          hintText: hint,
-          border: InputBorder.none,
-          isDense: true,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        ),
-      ),
-    );
-  }
+  Future<void> _showRealExcelOptions(
+    List<SaleReportEntry> entries,
+    double totalSale,
+    double balanceDue,
+    DateTimeRange range,
+    DateFormat dateFmt,
+  ) async {
+    final periodStr = '${dateFmt.format(range.start)} - ${dateFmt.format(range.end)}';
+    final tableHeaders = ['Date', 'Invoice #', 'Party Name', 'Status', 'Total (INR)', 'Received (INR)', 'Balance (INR)'];
+    final tableRows = entries.map((s) => [
+      dateFmt.format(s.date),
+      '${s.invoiceNo}',
+      s.partyName,
+      s.typeLabel,
+      s.totalAmount.toStringAsFixed(2),
+      s.received.toStringAsFixed(2),
+      s.balanceDue.toStringAsFixed(2),
+    ]).toList();
 
-  // ---------------- PDF / Excel Options ----------------
-  Future<void> _showPdfOptions() async {
-    await _showOptionsSheet(
-      title: 'PDF Options',
-      options: [
-        _OptionItem(icon: Icons.description_outlined, label: 'Open PDF', onTap: () {
-          _showSnackBar('Opening PDF...');
-        }),
-        _OptionItem(icon: Icons.print_outlined, label: 'Print PDF', onTap: () {
-          _showSnackBar('Printing PDF...');
-        }),
-        _OptionItem(icon: Icons.ios_share_rounded, label: 'Share PDF', onTap: () {
-          _showSnackBar('Sharing PDF...');
-        }),
-        _OptionItem(icon: Icons.download_rounded, label: 'Save PDF to Phone', onTap: () {
-          _showSnackBar('Saving PDF...');
-        }),
-      ],
-    );
-  }
+    final summary = {
+      'Total Invoices': '${entries.length}',
+      'Total Sales': '₹${_fmt(totalSale)}',
+      'Total Balance Due': '₹${_fmt(balanceDue)}',
+    };
 
-  Future<void> _showExcelOptions() async {
-    await _showOptionsSheet(
-      title: 'Excel Options',
-      options: [
-        _OptionItem(icon: Icons.description_outlined, label: 'Open Excel', onTap: () {
-          _showSnackBar('Opening Excel...');
-        }),
-        _OptionItem(icon: Icons.ios_share_rounded, label: 'Share Excel', onTap: () {
-          _showSnackBar('Sharing Excel...');
-        }),
-        _OptionItem(icon: Icons.file_upload_outlined, label: 'Export to Excel', onTap: () {
-          _showSnackBar('Exporting to Excel...');
-        }),
-        _OptionItem(icon: Icons.calendar_today_outlined, label: 'Schedule Report', onTap: () {
-          _showSnackBar('Scheduling Report...');
-        }),
-      ],
-    );
-  }
-
-  Future<void> _showOptionsSheet({
-    required String title,
-    required List<_OptionItem> options,
-  }) async {
-    await showModalBottomSheet<void>(
+    await ReportExportService.showExcelOptionsSheet(
       context: context,
-      backgroundColor: JoynColors.background,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (sheetContext) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildSheetHeader(title, sheetContext),
-              Divider(height: 1, color: JoynColors.border),
-              ...options.map((opt) => InkWell(
-                onTap: () {
-                  Navigator.pop(sheetContext);
-                  opt.onTap();
-                },
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                  child: Row(
-                    children: [
-                      Icon(opt.icon, size: 20, color: JoynColors.primary),
-                      const SizedBox(width: 16),
-                      Text(
-                        opt.label,
-                        style: JoynTypography.bodyLarge.copyWith(fontSize: 14),
-                      ),
-                    ],
-                  ),
-                ),
-              )),
-              const SizedBox(height: 8),
-            ],
-          ),
-        );
-      },
+      title: 'Sale Report',
+      periodLabel: periodStr,
+      summaryStats: summary,
+      tableHeaders: tableHeaders,
+      tableRows: tableRows,
     );
   }
-
-  void _showSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          message,
-          style: JoynTypography.bodyMedium.copyWith(color: Colors.white),
-        ),
-        backgroundColor: JoynColors.primary,
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.all(16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        duration: const Duration(milliseconds: 1500),
-      ),
-    );
-  }
-}
-
-class _OptionItem {
-  const _OptionItem({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
 }

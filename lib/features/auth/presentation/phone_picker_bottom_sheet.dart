@@ -116,10 +116,11 @@ class PhonePickerBottomSheet extends ConsumerWidget {
           JoynButton(
             text: 'Continue',
             variant: JoynButtonVariant.filled,
-            onPressed: () {
+            onPressed: () async {
+              final phone = authState.phoneNumber;
               Navigator.of(context).pop();
-              ref.read(authProvider.notifier).startOtpTimer();
-              context.push('/otp');
+              ref.read(authProvider.notifier).sendOtpApi(phone);
+              GoRouter.of(context).push('/otp');
             },
           ),
 

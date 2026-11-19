@@ -32,12 +32,11 @@
 //   ));
 // -----------------------------------------------------------------------
 
-import 'dart:typed_data';
+import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:pdf/pdf.dart';
-import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:screenshot/screenshot.dart';
 import 'package:share_plus/share_plus.dart';
@@ -46,6 +45,7 @@ import '../../../core/theme/joyn_colors.dart';
 import '../../../core/theme/joyn_typography.dart';
 // ✅ FIXED: now imports the single source of truth for OrderItemModel
 import '../../orders/models/sales_models.dart';
+import 'invoice_pdf_generator.dart';
 
 // ============================================================
 // DATA MODEL — everything the preview needs, decoupled from
@@ -61,9 +61,23 @@ class InvoicePreviewData {
     required this.items,
     required this.totalAmount,
     this.receivedAmount = 0,
-    this.businessName = 'Your Business',
+    this.businessName = 'JOYN Merchant',
     this.businessPhone = '',
     this.businessEmail = '',
+    this.businessAddress = '',
+    this.businessGstin = '',
+    this.customerAddress = '',
+    this.customerGstin = '',
+    this.stateOfSupply = '',
+    this.dueDate = '',
+    this.paymentMode = 'Cash',
+    this.termsAndConditions = '',
+    this.logoPath,
+    this.logoUrl,
+    this.bankName = '',
+    this.accountNumber = '',
+    this.ifscCode = '',
+    this.upiId = '',
     this.title = 'Tax Invoice',
   });
 
@@ -77,6 +91,20 @@ class InvoicePreviewData {
   final String businessName;
   final String businessPhone;
   final String businessEmail;
+  final String businessAddress;
+  final String businessGstin;
+  final String customerAddress;
+  final String customerGstin;
+  final String stateOfSupply;
+  final String dueDate;
+  final String paymentMode;
+  final String termsAndConditions;
+  final String? logoPath;
+  final String? logoUrl;
+  final String bankName;
+  final String accountNumber;
+  final String ifscCode;
+  final String upiId;
   final String title;
 
   double get balanceDue => (totalAmount - receivedAmount).clamp(0, double.infinity);
@@ -176,19 +204,28 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
     if (_isSharing) return;
     setState(() => _isSharing = true);
     try {
-      final bytes = await _captureCurrentThemeAsPng();
-      await Share.shareXFiles(
-        [
-          XFile.fromData(
-            bytes,
-            name: 'invoice_${widget.data.invoiceNo}.png',
-            mimeType: 'image/png',
-          ),
-        ],
-        text: '${widget.data.title} #${widget.data.invoiceNo}',
+      final pdfBytes = await InvoicePdfGenerator.generate(widget.data);
+      await Printing.sharePdf(
+        bytes: pdfBytes,
+        filename: 'Invoice_${widget.data.invoiceNo}.pdf',
       );
     } catch (e) {
-      _showError('Could not share invoice: $e');
+      // Fallback to PNG sharing if PDF sharing has platform issue
+      try {
+        final bytes = await _captureCurrentThemeAsPng();
+        await Share.shareXFiles(
+          [
+            XFile.fromData(
+              bytes,
+              name: 'Invoice_${widget.data.invoiceNo}.png',
+              mimeType: 'image/png',
+            ),
+          ],
+          text: '${widget.data.title} #${widget.data.invoiceNo}',
+        );
+      } catch (err) {
+        _showError('Could not share invoice: $err');
+      }
     } finally {
       if (mounted) setState(() => _isSharing = false);
     }
@@ -198,19 +235,10 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
     if (_isPrinting) return;
     setState(() => _isPrinting = true);
     try {
-      final bytes = await _captureCurrentThemeAsPng();
-      final image = pw.MemoryImage(bytes);
-      final doc = pw.Document();
-      doc.addPage(
-        pw.Page(
-          pageFormat: PdfPageFormat.a4,
-          margin: const pw.EdgeInsets.all(16),
-          build: (context) => pw.Center(child: pw.Image(image)),
-        ),
-      );
+      final pdfBytes = await InvoicePdfGenerator.generate(widget.data);
       await Printing.layoutPdf(
-        onLayout: (_) => doc.save(),
-        name: 'invoice_${widget.data.invoiceNo}.pdf',
+        onLayout: (_) async => pdfBytes,
+        name: 'Invoice_${widget.data.invoiceNo}.pdf',
       );
     } catch (e) {
       _showError('Could not print invoice: $e');
@@ -519,6 +547,90 @@ class _ItemsTable extends StatelessWidget {
 }
 
 // ============================================================
+// LOGO HELPER
+// ============================================================
+
+Widget _buildLogo(InvoicePreviewData data, {double size = 44, bool isWhiteTheme = false}) {
+  if (data.logoPath != null && data.logoPath!.isNotEmpty) {
+    try {
+      final file = File(data.logoPath!);
+      if (file.existsSync()) {
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Image.file(
+            file,
+            width: size,
+            height: size,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => _buildFallbackInitial(data, size, isWhiteTheme),
+          ),
+        );
+      }
+    } catch (_) {}
+  }
+
+  if (data.logoUrl != null && data.logoUrl!.isNotEmpty) {
+    try {
+      final url = data.logoUrl!;
+      if (url.startsWith('data:image') || (!url.startsWith('http') && url.length > 80)) {
+        final b64 = url.contains(',') ? url.split(',')[1] : url;
+        final bytes = base64Decode(b64.trim());
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Image.memory(
+            bytes,
+            width: size,
+            height: size,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => _buildFallbackInitial(data, size, isWhiteTheme),
+          ),
+        );
+      } else if (url.startsWith('http')) {
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Image.network(
+            url,
+            width: size,
+            height: size,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => _buildFallbackInitial(data, size, isWhiteTheme),
+          ),
+        );
+      }
+    } catch (_) {}
+  }
+
+  return _buildFallbackInitial(data, size, isWhiteTheme);
+}
+
+Widget _buildFallbackInitial(InvoicePreviewData data, double size, bool isWhiteTheme) {
+  final initial = data.businessName.trim().isNotEmpty
+      ? data.businessName.trim()[0].toUpperCase()
+      : 'J';
+  return Container(
+    width: size,
+    height: size,
+    decoration: BoxDecoration(
+      color: isWhiteTheme ? Colors.white.withValues(alpha: 0.2) : JoynColors.primary.withValues(alpha: 0.1),
+      borderRadius: BorderRadius.circular(8),
+      border: Border.all(
+        color: isWhiteTheme ? Colors.white38 : JoynColors.primary.withValues(alpha: 0.25),
+        width: 1,
+      ),
+    ),
+    alignment: Alignment.center,
+    child: Text(
+      initial,
+      style: TextStyle(
+        color: isWhiteTheme ? Colors.white : JoynColors.primary,
+        fontWeight: FontWeight.w800,
+        fontSize: size * 0.45,
+      ),
+    ),
+  );
+}
+
+// ============================================================
 // THEME: Tally / Landscape 1 / Landscape 2
 // ============================================================
 
@@ -542,21 +654,24 @@ class _SimpleInvoiceCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (showLogoBox)
-                Container(
-                  width: 56,
-                  height: 40,
-                  color: Colors.grey.shade400,
-                  alignment: Alignment.center,
-                  child: const Text('LOGO', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
-                ),
-              const SizedBox(width: 10),
+              _buildLogo(data, size: 48),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(data.businessName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                    Text('Phone: ${data.businessPhone}   Email: ${data.businessEmail}', style: const TextStyle(fontSize: 10)),
+                    if (data.businessAddress.isNotEmpty)
+                      Text(data.businessAddress, style: const TextStyle(fontSize: 9.5, color: Colors.black87)),
+                    if (data.businessGstin.isNotEmpty)
+                      Text('GSTIN: ${data.businessGstin}', style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600)),
+                    Text(
+                      [
+                        if (data.businessPhone.isNotEmpty) 'Phone: ${data.businessPhone}',
+                        if (data.businessEmail.isNotEmpty) 'Email: ${data.businessEmail}',
+                      ].join('   '),
+                      style: const TextStyle(fontSize: 9.5),
+                    ),
                   ],
                 ),
               ),
@@ -571,15 +686,16 @@ class _SimpleInvoiceCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text('Bill To:', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700)),
-                    Text(data.customerName, style: const TextStyle(fontSize: 11)),
-                    Text('Contact No: ${data.customerPhone}', style: const TextStyle(fontSize: 10)),
+                    Text(data.customerName, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                    if (data.customerPhone.isNotEmpty)
+                      Text('Contact No: ${data.customerPhone}', style: const TextStyle(fontSize: 10)),
                   ],
                 ),
               ),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text('Invoice No: ${data.invoiceNo}', style: const TextStyle(fontSize: 10)),
+                  Text('Invoice No: ${data.invoiceNo}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600)),
                   Text('Date: ${data.date}', style: const TextStyle(fontSize: 10)),
                 ],
               ),
@@ -627,20 +743,30 @@ class _GstInvoiceCard extends StatelessWidget {
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(color: accent.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(6)),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(data.businessName, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
-                    Text('Phone no.: ${data.businessPhone}', style: const TextStyle(fontSize: 10)),
-                    Text('Email: ${data.businessEmail}', style: const TextStyle(fontSize: 10)),
-                  ],
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: accent.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(6)),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(data.businessName, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+                      if (data.businessAddress.isNotEmpty)
+                        Text(data.businessAddress, style: const TextStyle(fontSize: 9, color: Colors.black87)),
+                      if (data.businessGstin.isNotEmpty)
+                        Text('GSTIN: ${data.businessGstin}', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w600)),
+                      if (data.businessPhone.isNotEmpty)
+                        Text('Phone no.: ${data.businessPhone}', style: const TextStyle(fontSize: 9.5)),
+                      if (data.businessEmail.isNotEmpty)
+                        Text('Email: ${data.businessEmail}', style: const TextStyle(fontSize: 9.5)),
+                    ],
+                  ),
                 ),
               ),
-              const Text('LOGO', style: TextStyle(fontSize: 10, color: Colors.grey)),
+              const SizedBox(width: 12),
+              _buildLogo(data, size: 48),
             ],
           ),
           const SizedBox(height: 10),
@@ -653,8 +779,9 @@ class _GstInvoiceCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text('Bill To', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700)),
-                  Text(data.customerName, style: const TextStyle(fontSize: 11)),
-                  Text('Contact No.: ${data.customerPhone}', style: const TextStyle(fontSize: 10)),
+                  Text(data.customerName, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                  if (data.customerPhone.isNotEmpty)
+                    Text('Contact No.: ${data.customerPhone}', style: const TextStyle(fontSize: 10)),
                 ],
               ),
               Column(
@@ -716,13 +843,28 @@ class _ModernEliteCard extends StatelessWidget {
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(data.businessName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                  Text(data.businessPhone, style: const TextStyle(fontSize: 10, color: Colors.grey)),
-                ],
+              _buildLogo(data, size: 44),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(data.businessName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                    if (data.businessAddress.isNotEmpty)
+                      Text(data.businessAddress, style: const TextStyle(fontSize: 9, color: Colors.grey)),
+                    if (data.businessGstin.isNotEmpty)
+                      Text('GSTIN: ${data.businessGstin}', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: Colors.grey)),
+                    Text(
+                      [
+                        if (data.businessPhone.isNotEmpty) data.businessPhone,
+                        if (data.businessEmail.isNotEmpty) data.businessEmail,
+                      ].join(' | '),
+                      style: const TextStyle(fontSize: 10, color: Colors.grey),
+                    ),
+                  ],
+                ),
               ),
               const Text('GENERATED ON\nJoyn', textAlign: TextAlign.right, style: TextStyle(fontSize: 8, color: Colors.grey)),
             ],
@@ -738,7 +880,8 @@ class _ModernEliteCard extends StatelessWidget {
                 children: [
                   const Text('Bill To:', style: TextStyle(fontSize: 10, color: Colors.grey)),
                   Text(data.customerName, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
-                  Text(data.customerPhone, style: const TextStyle(fontSize: 10)),
+                  if (data.customerPhone.isNotEmpty)
+                    Text(data.customerPhone, style: const TextStyle(fontSize: 10)),
                 ],
               ),
               Column(
@@ -804,12 +947,29 @@ class _DoubleDivineCard extends StatelessWidget {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(data.businessName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13)),
+                Row(
+                  children: [
+                    _buildLogo(data, size: 40, isWhiteTheme: true),
+                    const SizedBox(width: 10),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(data.businessName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13)),
+                        if (data.businessGstin.isNotEmpty)
+                          Text('GSTIN: ${data.businessGstin}', style: const TextStyle(color: Colors.white70, fontSize: 9)),
+                        if (data.businessAddress.isNotEmpty)
+                          Text(data.businessAddress, style: const TextStyle(color: Colors.white70, fontSize: 8.5)),
+                      ],
+                    ),
+                  ],
+                ),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Text(data.businessPhone, style: const TextStyle(color: Colors.white, fontSize: 9)),
-                    Text(data.businessEmail, style: const TextStyle(color: Colors.white, fontSize: 9)),
+                    if (data.businessPhone.isNotEmpty)
+                      Text(data.businessPhone, style: const TextStyle(color: Colors.white, fontSize: 9)),
+                    if (data.businessEmail.isNotEmpty)
+                      Text(data.businessEmail, style: const TextStyle(color: Colors.white, fontSize: 9)),
                   ],
                 ),
               ],
@@ -830,7 +990,8 @@ class _DoubleDivineCard extends StatelessWidget {
                       children: [
                         Text('Bill To', style: TextStyle(fontSize: 10, color: accent, fontWeight: FontWeight.w700)),
                         Text(data.customerName, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
-                        Text('Contact No.: ${data.customerPhone}', style: const TextStyle(fontSize: 10)),
+                        if (data.customerPhone.isNotEmpty)
+                          Text('Contact No.: ${data.customerPhone}', style: const TextStyle(fontSize: 10)),
                       ],
                     ),
                     Column(

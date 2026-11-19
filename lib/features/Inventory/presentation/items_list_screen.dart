@@ -10,6 +10,8 @@ import '../../orders/models/sales_models.dart';
 import '../../orders/data/sales_repository.dart';
 import '../../Inventory/presentation/add_new_item_screen.dart';
 import '../../Inventory/presentation/item_detail_screen.dart';
+import 'scan_code_screen.dart';
+import '../../../core/services/api_service.dart';
 
 enum _SortOption { nameAsc, nameDesc, stockLow, stockHigh, priceLow, priceHigh, recentlyAdded }
 enum _StockFilter { all, inStock, lowStock, outOfStock }
@@ -696,6 +698,7 @@ class _ItemsListScreenState extends State<ItemsListScreen> {
   String? _selectedCategory;
 
   // Manage-Inventory style advanced filters
+  final TextEditingController _searchCtrl = TextEditingController();
   final TextEditingController _hsnCtrl = TextEditingController();
   final TextEditingController _locationCtrl = TextEditingController();
   final TextEditingController _skuCtrl = TextEditingController();
@@ -723,6 +726,7 @@ class _ItemsListScreenState extends State<ItemsListScreen> {
 
   @override
   void dispose() {
+    _searchCtrl.dispose();
     _hsnCtrl.dispose();
     _locationCtrl.dispose();
     _skuCtrl.dispose();
@@ -740,6 +744,13 @@ class _ItemsListScreenState extends State<ItemsListScreen> {
         _items = List<InventoryItemModel>.from(items);
         _isLoading = false;
         _applyFilters();
+      });
+
+      // Background sync from live PostgreSQL backend
+      ApiService.fetchItems().then((remoteItems) {
+        debugPrint('Fetched ${remoteItems.length} items from backend API');
+      }).catchError((err) {
+        debugPrint('Remote fetch items error: $err');
       });
     } catch (e) {
       debugPrint('Error loading items: $e');
@@ -823,6 +834,8 @@ class _ItemsListScreenState extends State<ItemsListScreen> {
           item.name.toLowerCase().contains(query) ||
           item.category.toLowerCase().contains(query) ||
           item.barcode.contains(query) ||
+          item.displayItemCode.toLowerCase().contains(query) ||
+          (item.itemNumber != null && item.itemNumber.toString().contains(query)) ||
           item.hsnSac.toLowerCase().contains(query);
 
       final matchesCategory = !_activeFilters.contains('category') ||
@@ -906,6 +919,18 @@ class _ItemsListScreenState extends State<ItemsListScreen> {
       _searchQuery = value;
       _applyFilters();
     });
+  }
+
+  Future<void> _scanBarcodeToSearch() async {
+    HapticFeedback.lightImpact();
+    final scannedCode = await Navigator.of(context).push<String>(
+      MaterialPageRoute(builder: (_) => const ScanCodeScreen()),
+    );
+    if (scannedCode != null && scannedCode.trim().isNotEmpty && mounted) {
+      final code = scannedCode.trim();
+      _searchCtrl.text = code;
+      _onSearchChanged(code);
+    }
   }
 
   void _toggleFilter(String key) {
@@ -2065,6 +2090,23 @@ class _ItemsListScreenState extends State<ItemsListScreen> {
                   ),
                   actions: [
                     _Pressable(
+                      onTap: _scanBarcodeToSearch,
+                      scale: 0.9,
+                      borderRadius: 22,
+                      child: Container(
+                        margin: const EdgeInsets.fromLTRB(0, 6, 8, 6),
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: JoynColors.primary.withValues(alpha: 0.1),
+                          shape: BoxShape.circle,
+                          border: _Premium.hairline(width: 1.0),
+                        ),
+                        child: const Icon(Icons.qr_code_scanner_rounded,
+                            size: 19, color: JoynColors.primary),
+                      ),
+                    ),
+                    _Pressable(
                       onTap: _navigateToAddItem,
                       scale: 0.9,
                       borderRadius: 22,
@@ -2138,6 +2180,7 @@ class _ItemsListScreenState extends State<ItemsListScreen> {
                                     : _Premium.softShadow,
                               ),
                               child: TextField(
+                                controller: _searchCtrl,
                                 onChanged: _onSearchChanged,
                                 style: JoynTypography.bodyMedium
                                     .copyWith(fontSize: 13.5, fontWeight: FontWeight.w600),
@@ -2158,20 +2201,41 @@ class _ItemsListScreenState extends State<ItemsListScreen> {
                                           size: 16, color: JoynColors.primary),
                                     ),
                                   ),
-                                  suffixIcon: _searchQuery.isNotEmpty
-                                      ? IconButton(
-                                    icon: Container(
-                                      padding: const EdgeInsets.all(3),
-                                      decoration: BoxDecoration(
-                                        color: JoynColors.chipBackground,
-                                        shape: BoxShape.circle,
+                                  suffixIcon: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (_searchQuery.isNotEmpty)
+                                        IconButton(
+                                          icon: Container(
+                                            padding: const EdgeInsets.all(3),
+                                            decoration: const BoxDecoration(
+                                              color: JoynColors.chipBackground,
+                                              shape: BoxShape.circle,
+                                            ),
+                                            child: const Icon(Icons.clear_rounded,
+                                                size: 12, color: JoynColors.secondaryText),
+                                          ),
+                                          onPressed: () {
+                                            _searchCtrl.clear();
+                                            _onSearchChanged('');
+                                          },
+                                        ),
+                                      IconButton(
+                                        icon: Container(
+                                          padding: const EdgeInsets.all(4),
+                                          decoration: BoxDecoration(
+                                            color: JoynColors.primary.withValues(alpha: 0.1),
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                          child: const Icon(Icons.qr_code_scanner_rounded,
+                                              size: 18, color: JoynColors.primary),
+                                        ),
+                                        tooltip: 'Scan Barcode',
+                                        onPressed: _scanBarcodeToSearch,
                                       ),
-                                      child: const Icon(Icons.clear_rounded,
-                                          size: 12, color: JoynColors.secondaryText),
-                                    ),
-                                    onPressed: () => _onSearchChanged(''),
-                                  )
-                                      : null,
+                                      const SizedBox(width: 4),
+                                    ],
+                                  ),
                                   border: InputBorder.none,
                                   contentPadding: const EdgeInsets.symmetric(vertical: 13),
                                 ),
@@ -2451,6 +2515,28 @@ class _ItemsListScreenState extends State<ItemsListScreen> {
                                           letterSpacing: -0.2),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 5, vertical: 1.5),
+                                    decoration: BoxDecoration(
+                                      color: JoynColors.primary.withValues(alpha: 0.08),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(
+                                        color: JoynColors.primary.withValues(alpha: 0.20),
+                                        width: 0.8,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      item.displayItemCode,
+                                      style: JoynTypography.caption.copyWith(
+                                        fontSize: 9.5,
+                                        fontWeight: FontWeight.w800,
+                                        color: JoynColors.primary,
+                                        letterSpacing: 0.3,
+                                      ),
                                     ),
                                   ),
                                   if (isOutOfStock)

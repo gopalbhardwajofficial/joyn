@@ -13,6 +13,7 @@ import 'package:joyn/features/Inventory/widgets/avatar.dart';
 import 'package:joyn/features/Inventory/presentation/sale_form_screen.dart';
 import 'package:joyn/features/Inventory/presentation/payment_in_screen.dart';
 import 'package:joyn/features/orders/presentation/add_purchase_order_screen.dart';
+import '../../../core/services/api_service.dart';
 
 enum _SortOption { nameAsc, nameDesc, categoryAsc }
 
@@ -701,6 +702,7 @@ class _PartyListScreenState extends State<PartyListScreen> {
   String? _selectedPartyType;
   String? _selectedPriority;
   _SortOption _sortOption = _SortOption.nameAsc;
+  String _quickFilter = 'all'; // 'all', 'customer', 'supplier', 'toReceive', 'toPay'
 
   // Which filters are visible
   Set<String> _activeFilters = {'name'};
@@ -748,6 +750,7 @@ class _PartyListScreenState extends State<PartyListScreen> {
 
   int get _activeFilterCount {
     int count = 0;
+    if (_quickFilter != 'all') count++;
     if (_nameCtrl.text.isNotEmpty) count++;
     if (_selectedCategory != null) count++;
     if (_selectedPartyType != null) count++;
@@ -785,6 +788,52 @@ class _PartyListScreenState extends State<PartyListScreen> {
         _isLoading = false;
         _applyFilters();
       });
+
+      // Background sync from live PostgreSQL backend
+      ApiService.fetchParties().then((res) async {
+        final rawList = (res['parties'] ?? res['data']) as List? ?? [];
+        debugPrint('Fetched ${rawList.length} parties from backend API');
+        if (rawList.isNotEmpty) {
+          bool updated = false;
+          for (final raw in rawList) {
+            final pMap = raw as Map<String, dynamic>;
+            final pid = (pMap['id'] ?? pMap['party_id'] ?? '').toString();
+            if (pid.isNotEmpty && !_parties.any((p) => p.id == pid)) {
+              final pModel = PartyModel(
+                id: pid,
+                name: pMap['name']?.toString() ?? '',
+                category: pMap['category']?.toString() ?? '',
+                contactNumber: (pMap['contact_number'] ?? pMap['phone'] ?? '').toString(),
+                email: pMap['email']?.toString() ?? '',
+                address: (pMap['billing_address'] ?? pMap['address'] ?? '').toString(),
+                city: pMap['city']?.toString() ?? '',
+                partyType: (pMap['party_type'] ?? pMap['type'] ?? 'customer').toString(),
+                priorityLevel: (pMap['priority_level'] ?? 'medium').toString(),
+                photoPath: '',
+                createdAt: DateTime.tryParse(pMap['created_at']?.toString() ?? '') ?? DateTime.now(),
+                openingBalance: (pMap['opening_balance'] as num?)?.toDouble() ?? 0,
+                balanceType: (pMap['balance_type'] ?? 'toReceive').toString(),
+                creditLimit: (pMap['credit_limit'] as num?)?.toDouble() ?? 0,
+                partyNumber: (pMap['party_number'] as num?)?.toInt(),
+                partyCode: pMap['party_code']?.toString(),
+              );
+              await _salesRepository.insertParty(pModel);
+              updated = true;
+            }
+          }
+          if (updated && mounted) {
+            final refreshed = await _salesRepository.getParties();
+            final balancesRefreshed = await _salesRepository.getAllPartyBalances();
+            setState(() {
+              _parties = refreshed;
+              _balances = balancesRefreshed;
+              _applyFilters();
+            });
+          }
+        }
+      }).catchError((err) {
+        debugPrint('Remote fetch parties error: $err');
+      });
     } catch (e) {
       debugPrint('Error loading parties: $e');
       if (!mounted) return;
@@ -793,34 +842,71 @@ class _PartyListScreenState extends State<PartyListScreen> {
   }
 
   void _applyFilters() {
+    final sq = _searchQuery.trim().toLowerCase();
+    final nameQuery = _nameCtrl.text.trim().toLowerCase();
+    final cityQuery = _cityCtrl.text.trim().toLowerCase();
+    final phoneQuery = _phoneCtrl.text.trim();
+    final selCat = _selectedCategory?.trim().toLowerCase();
+    final selType = _selectedPartyType?.trim().toLowerCase();
+    final selPri = _selectedPriority?.trim().toLowerCase();
+
     var list = _parties.where((party) {
+      final partyType = party.partyType.trim().toLowerCase();
+      final partyCat = party.category.trim().toLowerCase();
+      final partyPri = party.priorityLevel.trim().toLowerCase();
+      final partyCity = party.city.trim().toLowerCase();
+      final partyCode = party.displayPartyCode.trim().toLowerCase();
+
+      // Quick filter tabs (treat 'both' as valid for both customer and supplier)
+      if (_quickFilter == 'customer' && partyType != 'customer' && partyType != 'both') return false;
+      if (_quickFilter == 'supplier' && partyType != 'supplier' && partyType != 'both') return false;
+      if (_quickFilter == 'toReceive') {
+        final info = _balances[party.id];
+        final bal = (info?['balance'] as double?) ?? 0;
+        final isRec = info?['isReceivable'] as bool? ?? true;
+        if (!(bal > 0 && isRec)) return false;
+      }
+      if (_quickFilter == 'toPay') {
+        final info = _balances[party.id];
+        final bal = (info?['balance'] as double?) ?? 0;
+        final isRec = info?['isReceivable'] as bool? ?? true;
+        if (!(bal > 0 && !isRec)) return false;
+      }
+
       // Search query (from main search bar)
-      final matchesSearch = _searchQuery.isEmpty ||
-          party.name.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-          party.category.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-          party.city.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-          party.contactNumber.contains(_searchQuery);
+      final matchesSearch = sq.isEmpty ||
+          party.name.toLowerCase().contains(sq) ||
+          partyCat.contains(sq) ||
+          partyCity.contains(sq) ||
+          party.contactNumber.contains(sq) ||
+          partyCode.contains(sq) ||
+          (party.partyNumber != null && party.partyNumber.toString().contains(sq));
 
       // Filter card fields
-      final nameQuery = _nameCtrl.text.trim().toLowerCase();
       final matchesName = nameQuery.isEmpty ||
           party.name.toLowerCase().contains(nameQuery) ||
-          party.category.toLowerCase().contains(nameQuery);
+          partyCat.contains(nameQuery) ||
+          partyCode.contains(nameQuery);
 
-      final matchesCategory = _selectedCategory == null ||
-          party.category == _selectedCategory;
+      final matchesCategory = selCat == null ||
+          selCat.isEmpty ||
+          selCat == 'all categories' ||
+          partyCat == selCat;
 
-      final matchesType = _selectedPartyType == null ||
-          party.partyType == _selectedPartyType;
+      final matchesType = selType == null ||
+          selType.isEmpty ||
+          selType == 'all' ||
+          selType == 'both' ||
+          partyType == selType ||
+          partyType == 'both';
 
-      final matchesPriority = _selectedPriority == null ||
-          party.priorityLevel == _selectedPriority;
+      final matchesPriority = selPri == null ||
+          selPri.isEmpty ||
+          selPri == 'all' ||
+          partyPri == selPri;
 
-      final cityQuery = _cityCtrl.text.trim().toLowerCase();
-      final matchesCity = cityQuery.isEmpty ||
-          party.city.toLowerCase().contains(cityQuery);
+      final matchesCity = cityQuery.isEmpty || partyCity.contains(cityQuery);
 
-      final phoneQuery = _phoneCtrl.text.trim();
       final matchesPhone = phoneQuery.isEmpty ||
           party.contactNumber.contains(phoneQuery);
 
@@ -853,6 +939,7 @@ class _PartyListScreenState extends State<PartyListScreen> {
 
   void _clearAllFilters() {
     setState(() {
+      _quickFilter = 'all';
       _searchQuery = '';
       _nameCtrl.clear();
       _cityCtrl.clear();
@@ -1163,8 +1250,8 @@ class _PartyListScreenState extends State<PartyListScreen> {
                                 } else {
                                   _activeFilters.add(option.key);
                                 }
-                                _applyFilters();
                               });
+                              setState(() => _applyFilters());
                             },
                             scale: 0.98,
                             borderRadius: 14,
@@ -1278,8 +1365,8 @@ class _PartyListScreenState extends State<PartyListScreen> {
                                           } else {
                                             _activeFilters.add(option.key);
                                           }
-                                          _applyFilters();
                                         });
+                                        setState(() => _applyFilters());
                                       },
                                       activeTrackColor: JoynColors.primary,
                                       materialTapTargetSize:
@@ -1332,7 +1419,9 @@ class _PartyListScreenState extends State<PartyListScreen> {
           },
         );
       },
-    );
+    ).then((_) {
+      if (mounted) setState(() => _applyFilters());
+    });
   }
 
   // =====================================================================
@@ -1991,6 +2080,53 @@ class _PartyListScreenState extends State<PartyListScreen> {
                       ),
                     ),
 
+                    // QUICK FILTER CHIPS
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 2, 16, 6),
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        physics: const BouncingScrollPhysics(),
+                        child: Row(
+                          children: [
+                            _buildQuickFilterChip('All', _quickFilter == 'all', () {
+                              setState(() {
+                                _quickFilter = 'all';
+                                _applyFilters();
+                              });
+                            }),
+                            const SizedBox(width: 8),
+                            _buildQuickFilterChip('Customers', _quickFilter == 'customer', () {
+                              setState(() {
+                                _quickFilter = 'customer';
+                                _applyFilters();
+                              });
+                            }),
+                            const SizedBox(width: 8),
+                            _buildQuickFilterChip('Suppliers', _quickFilter == 'supplier', () {
+                              setState(() {
+                                _quickFilter = 'supplier';
+                                _applyFilters();
+                              });
+                            }),
+                            const SizedBox(width: 8),
+                            _buildQuickFilterChip('To Receive', _quickFilter == 'toReceive', () {
+                              setState(() {
+                                _quickFilter = 'toReceive';
+                                _applyFilters();
+                              });
+                            }),
+                            const SizedBox(width: 8),
+                            _buildQuickFilterChip('To Pay', _quickFilter == 'toPay', () {
+                              setState(() {
+                                _quickFilter = 'toPay';
+                                _applyFilters();
+                              });
+                            }),
+                          ],
+                        ),
+                      ),
+                    ),
+
                     // FILTER CARD (below search, shows active filter fields)
                     if (_activeFilters.isNotEmpty &&
                         (_activeFilters.length > 1 ||
@@ -2050,6 +2186,44 @@ class _PartyListScreenState extends State<PartyListScreen> {
             // ✅ FIXED BOTTOM ACTION BAR
             _buildFrostedActionBar(),
           ],
+        ),
+      ),
+    );
+  }
+
+  // =====================================================================
+  // QUICK FILTER CHIP
+  // =====================================================================
+  Widget _buildQuickFilterChip(String label, bool selected, VoidCallback onTap) {
+    return _Pressable(
+      onTap: onTap,
+      scale: 0.95,
+      borderRadius: 20,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          gradient: selected ? _Premium.gradient(JoynColors.primary) : null,
+          color: selected ? null : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected
+                ? JoynColors.primary
+                : JoynColors.border.withValues(alpha: 0.8),
+            width: selected ? 1.4 : 1.0,
+          ),
+          boxShadow: selected
+              ? _Premium.chipShadow(JoynColors.primary)
+              : _Premium.hairlineShadow,
+        ),
+        child: Text(
+          label,
+          style: JoynTypography.caption.copyWith(
+            fontSize: 12,
+            fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+            color: selected ? Colors.white : Colors.black87,
+          ),
         ),
       ),
     );
@@ -2341,6 +2515,28 @@ class _PartyListScreenState extends State<PartyListScreen> {
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 6, vertical: 1.5),
+                                decoration: BoxDecoration(
+                                  color: JoynColors.primary.withValues(alpha: 0.08),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color: JoynColors.primary.withValues(alpha: 0.20),
+                                    width: 0.8,
+                                  ),
+                                ),
+                                child: Text(
+                                  party.displayPartyCode,
+                                  style: JoynTypography.caption.copyWith(
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: JoynColors.primary,
+                                    letterSpacing: 0.3,
+                                  ),
+                                ),
+                              ),
                               if (party.priorityLevel == 'high')
                                 Padding(
                                   padding: const EdgeInsets.only(left: 4),
@@ -2598,12 +2794,45 @@ class _PartyListScreenState extends State<PartyListScreen> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 40),
             child: Text(
-              'Try adjusting your search filters or tap the settings icon to add more filters',
+              'Try adjusting your search filters or add a new party below',
               textAlign: TextAlign.center,
               style: JoynTypography.subtitle.copyWith(
                   fontSize: 13,
                   color: JoynColors.secondaryText,
                   height: 1.4),
+            ),
+          ),
+          const SizedBox(height: 18),
+          _Pressable(
+            onTap: () async {
+              HapticFeedback.lightImpact();
+              await Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const AddNewPartyScreen()),
+              );
+              _loadParties();
+            },
+            borderRadius: 14,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
+              decoration: BoxDecoration(
+                gradient: _Premium.gradient(JoynColors.primary),
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: _Premium.chipShadow(JoynColors.primary),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.add_rounded, color: Colors.white, size: 18),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Add New Party',
+                    style: JoynTypography.bodyMedium.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],

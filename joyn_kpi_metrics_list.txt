@@ -1,0 +1,186 @@
+================================================================================
+JOYN ERP & BILLING PLATFORM — KEY PERFORMANCE INDICATORS (KPI) SUITE
+================================================================================
+Document Type: Official Platform Metric Specifications
+Target Audience: Executive Leadership, Finance & Retail Stakeholders
+Platform: JOYN ERP & Smart Billing Engine (Web, Mobile & Cloud)
+================================================================================
+
+1. SALES & REVENUE VELOCITY
+--------------------------------------------------------------------------------
+1.1  Total Gross Sales (Revenue)
+     Description : Total monetary value of all completed sales transactions and 
+                   invoices within the selected time window.
+     Calculation : Sum of (Invoice Total Amounts).
+
+1.2  Net Realized Sales (Cash Collected)
+     Description : Actual liquidity received at counter or bank against sales.
+     Calculation : Total Gross Sales - Total Unpaid / Credit Receivables.
+
+1.3  Credit Sales Volume
+     Description : Total value of sales conducted on credit / khata terms 
+                   awaiting customer settlement.
+     Calculation : Sum of (Invoice Total Amount - Amount Received at Billing).
+
+1.4  Total Invoices Count
+     Description : Total volume of sales bills / transactions generated.
+     Purpose     : Measures billing desk activity and store footfall throughput.
+
+1.5  Average Order Value (AOV)
+     Description : The average revenue generated per customer transaction.
+     Calculation : Total Gross Sales / Total Invoices Count.
+
+1.6  Sales Growth Rate (Period-over-Period)
+     Description : Percentage change in total revenue compared to the equivalent 
+                   prior period (e.g., this month vs last month, this year vs last year).
+     Calculation : ((Current Period Sales - Prior Period Sales) / Prior Period Sales) * 100.
+
+1.7  Payment Method Distribution
+     Description : Percentage and monetary breakdown of payment tenders:
+                   - Cash
+                   - UPI / QR Payments
+                   - Bank Transfer (NEFT / IMPS / RTGS)
+                   - Cheque
+
+
+2. WORKING CAPITAL & LIQUIDITY MANAGEMENT
+--------------------------------------------------------------------------------
+2.1  Total Accounts Receivable (You'll Get / Debtors)
+     Description : Total outstanding balance owed by all customers / credit parties.
+     Purpose     : Critical for working capital management and credit risk monitoring.
+
+2.2  Total Accounts Payable (You'll Give / Creditors)
+     Description : Total outstanding liabilities owed to vendors and distributors.
+     Purpose     : Ensures timely vendor settlements and cash flow forecasting.
+
+2.3  Net Working Capital Gap
+     Description : Difference between receivables and payables.
+     Calculation : Total Receivables - Total Payables.
+
+2.4  Cash in Hand
+     Description : Real-time balance of physical currency available in the cash drawer.
+     Calculation : Opening Cash + Cash Inflows (Sales / Payments In) - Cash Outflows (Purchases / Expenses).
+
+2.5  Reconciled Bank Balance
+     Description : Aggregated real-time balance across integrated business bank accounts.
+
+2.6  Accounts Receivable Aging Analysis
+     Description : Categorization of pending customer dues by overdue duration:
+                   - 0 to 30 Days (Current / Healthy)
+                   - 31 to 60 Days (Attention Needed)
+                   - 61 to 90 Days (Overdue)
+                   - 90+ Days (High Risk / Bad Debt Risk)
+
+
+3. PROFITABILITY & OPERATIONAL MARGINS
+--------------------------------------------------------------------------------
+3.1  Gross Profit
+     Description : Direct profit generated after deducting Cost of Goods Sold.
+     Calculation : Total Sales Revenue - Cost of Goods Sold (Purchase Rate * Qty).
+
+3.2  Gross Margin Percentage
+     Description : Percentage of sales revenue retained as gross earnings.
+     Calculation : (Gross Profit / Total Sales Revenue) * 100.
+
+3.3  Total Operating Expenses (OpEx)
+     Description : Aggregate of all direct and indirect business operational overheads 
+                   (Rent, Salaries, Utilities, Logistics, Maintenance, Marketing).
+
+3.4  Net Operating Profit
+     Description : Final bottom-line business profit after deducting all expenses.
+     Calculation : Gross Profit - Total Operating Expenses.
+
+3.5  Net Profit Margin Percentage
+     Description : Percentage of top-line revenue converted into bottom-line profit.
+     Calculation : (Net Operating Profit / Total Sales Revenue) * 100.
+
+
+4. INVENTORY VALUATION & STOCK INTELLIGENCE
+--------------------------------------------------------------------------------
+4.1  Total Stock Valuation at Purchase Cost
+     Description : Total monetary value of current warehouse/store inventory at acquisition cost.
+     Calculation : Sum of (Item Current Quantity * Unit Purchase Price).
+
+4.2  Potential Stock Valuation at Retail Selling Price
+     Description : Projected revenue realizable upon selling 100% of current inventory.
+     Calculation : Sum of (Item Current Quantity * Unit Selling Price).
+
+4.3  Unrealized Inventory Gross Margin
+     Description : Potential gross margin locked in current inventory.
+     Calculation : Potential Stock Valuation (Selling) - Total Stock Valuation (Purchase).
+
+4.4  Total Active Catalog SKUs
+     Description : Total number of distinct active product items maintained in inventory.
+
+4.5  Out-of-Stock (Stockout) Count & Alerts
+     Description : Number of items with zero available inventory.
+     Impact      : Highlights missed revenue opportunities and prevents stockouts.
+
+4.6  Low Stock Warning Count
+     Description : Number of items whose available quantity has fallen below the 
+                   configured minimum threshold level.
+     Purpose     : Generates automated purchase reorder triggers.
+
+4.7  Top 10 Fast-Moving / Most Selling Items
+     Description : Ranked list of items generating highest unit volumes and revenue.
+     Metrics     : Quantity Sold, Total Revenue Generated, Profit Margin Contribution.
+
+4.8  Dead Stock / Slow-Moving Items (Non-Moving Inventory)
+     Description : Products with zero sales velocity over 30, 60, or 90 days.
+     Key Metric  : Locked Capital Value (Total monetary value tied up in unsellable stock).
+
+
+5. CUSTOMER & VENDOR INTELLIGENCE
+--------------------------------------------------------------------------------
+5.1  Top VIP Customers
+     Description : Ranked list of clients by billing volume, order frequency, and margin.
+     Purpose     : Enables loyalty programs, tailored pricing tiers, and retention strategies.
+
+5.2  Top Vendor / Supplier Partners
+     Description : Ranked list of procurement partners by purchase volume and order frequency.
+
+5.3  Customer Repeat Purchase Rate
+     Description : Percentage of customers who return for multiple purchases within a period.
+
+5.4  Customer Payment Discipline Index
+     Description : Tracking of average days taken by parties to settle credit invoices.
+
+
+6. TEAM & OPERATIONAL PERFORMANCE
+--------------------------------------------------------------------------------
+6.1  Sales Revenue by Team Member / Cashier
+     Description : Total sales value booked by each individual staff member.
+
+6.2  Transaction Activity Logs per Staff Member
+     Description : Audit trail of operations performed (Invoices Created, Stock Modified, 
+                   Parties Added, Payments Handled).
+
+6.3  Staff Status & Real-time Access Controls
+     Description : Live monitoring and toggling of active vs suspended team member permissions.
+
+
+7. DYNAMIC TIME-PERIOD FILTERING CAPABILITIES
+--------------------------------------------------------------------------------
+All above metrics, charts, and ranked lists support real-time period slicing:
+- Today
+- Yesterday
+- This Week (Monday to Sunday)
+- This Month (Calendar Month)
+- This Quarter (Q1, Q2, Q3, Q4)
+- This Financial Year (April 1 to March 31)
+- Custom Date Range (User-defined Start & End dates)
+
+
+8. EXPORT, SHARING & COMPLIANCE
+--------------------------------------------------------------------------------
+8.1  Vector A4 Legal GST Tax Invoices (with dynamic UPI QR Code for instant scan & pay)
+8.2  Thermal Receipt Printing (ESC/POS 2-inch & 3-inch, Bluetooth / USB)
+8.3  PDF Export for all Financial Reports & Summaries
+8.4  Excel (.xlsx) Export for detailed accounting auditing
+8.5  Direct WhatsApp sharing of Invoices, Payment Reminders, and Ledgers
+
+================================================================================
+Generated by: JOYN ERP Platform Engine
+File: joyn_kpi_metrics_list.txt
+================================================================================
+

@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:sqflite/sqflite.dart';
 import '../../../core/database/database_helper.dart';
+import '../../../core/services/api_service.dart';
+import '../../../core/services/sync_service.dart';
 import 'package:joyn/features/orders/models/sales_models.dart';
 
 class SalesRepository {
@@ -48,6 +50,54 @@ class SalesRepository {
 
     // ✅ purchase_orders me partyId column
     await tryAlter("ALTER TABLE purchase_orders ADD COLUMN partyId TEXT DEFAULT ''");
+
+    // ✅ Unique ID and Numbers for Parties and Items
+    await tryAlter("ALTER TABLE parties ADD COLUMN partyNumber INTEGER");
+    await tryAlter("ALTER TABLE parties ADD COLUMN partyCode TEXT");
+    await tryAlter("ALTER TABLE items ADD COLUMN itemNumber INTEGER");
+    await tryAlter("ALTER TABLE items ADD COLUMN itemCode TEXT");
+
+    // Backfill existing parties missing numbers
+    try {
+      final partiesMissing = await db.query('parties',
+          where: 'partyNumber IS NULL OR partyNumber = 0',
+          orderBy: 'createdAt ASC');
+      if (partiesMissing.isNotEmpty) {
+        int currentPartyNum = (Sqflite.firstIntValue(
+                await db.rawQuery('SELECT MAX(partyNumber) FROM parties')) ?? 1000);
+        if (currentPartyNum < 1000) currentPartyNum = 1000;
+        for (final p in partiesMissing) {
+          currentPartyNum++;
+          final id = p['id'] as String;
+          final code = 'PRT-$currentPartyNum';
+          await db.update('parties', {'partyNumber': currentPartyNum, 'partyCode': code},
+              where: 'id = ?', whereArgs: [id]);
+        }
+      }
+    } catch (e) {
+      debugPrint('Party backfill error: $e');
+    }
+
+    // Backfill existing items missing numbers
+    try {
+      final itemsMissing = await db.query('items',
+          where: 'itemNumber IS NULL OR itemNumber = 0',
+          orderBy: 'createdAt ASC');
+      if (itemsMissing.isNotEmpty) {
+        int currentItemNum = (Sqflite.firstIntValue(
+                await db.rawQuery('SELECT MAX(itemNumber) FROM items')) ?? 1000);
+        if (currentItemNum < 1000) currentItemNum = 1000;
+        for (final i in itemsMissing) {
+          currentItemNum++;
+          final id = i['id'] as String;
+          final code = 'ITM-$currentItemNum';
+          await db.update('items', {'itemNumber': currentItemNum, 'itemCode': code},
+              where: 'id = ?', whereArgs: [id]);
+        }
+      }
+    } catch (e) {
+      debugPrint('Item backfill error: $e');
+    }
 
     await db.execute('''
       CREATE TABLE IF NOT EXISTS payments (
@@ -113,10 +163,58 @@ class SalesRepository {
     return maps.map((map) => PartyModel.fromDb(map)).toList();
   }
 
+  Future<PartyModel?> getPartyById(String id) async {
+    if (id.isEmpty) return null;
+    final db = await _readyDb();
+    final maps = await db.query('parties', where: 'id = ?', whereArgs: [id], limit: 1);
+    if (maps.isEmpty) return null;
+    return PartyModel.fromDb(maps.first);
+  }
+
   Future<void> insertParty(PartyModel party) async {
     final db = await _readyDb();
-    await db.insert('parties', party.toDb(),
+    int partyNum = party.partyNumber ?? 0;
+    String partyCode = party.partyCode ?? '';
+    if (partyNum <= 0) {
+      final maxVal = Sqflite.firstIntValue(
+              await db.rawQuery('SELECT MAX(partyNumber) FROM parties')) ?? 1000;
+      partyNum = (maxVal < 1000 ? 1000 : maxVal) + 1;
+      partyCode = 'PRT-$partyNum';
+    }
+    final partyToSave = party.copyWith(partyNumber: partyNum, partyCode: partyCode);
+
+    await db.insert('parties', partyToSave.toDb(),
         conflictAlgorithm: ConflictAlgorithm.replace);
+
+    final apiPayload = {
+      'id': partyToSave.id,
+      'name': partyToSave.name,
+      'category': partyToSave.category,
+      'contact_number': partyToSave.contactNumber,
+      'email': partyToSave.email,
+      'billing_address': partyToSave.address,
+      'city': partyToSave.city,
+      'party_type': partyToSave.partyType,
+      'opening_balance': partyToSave.openingBalance,
+      'balance_type': partyToSave.balanceType,
+      'credit_limit': partyToSave.creditLimit ?? 0,
+      'party_number': partyNum,
+      'party_code': partyCode,
+    };
+
+    try {
+      ApiService.createParty(apiPayload).then((res) async {
+        if (res['success'] != true) {
+          final sync = await SyncService.getInstance();
+          await sync.queueMutation(collection: 'parties', data: apiPayload);
+        }
+      }).catchError((_) async {
+        final sync = await SyncService.getInstance();
+        await sync.queueMutation(collection: 'parties', data: apiPayload);
+      });
+    } catch (_) {
+      SyncService.getInstance().then((sync) => sync.queueMutation(collection: 'parties', data: apiPayload));
+    }
   }
 
   Future<void> updateParty(PartyModel party) async {
@@ -148,8 +246,48 @@ class SalesRepository {
 
   Future<void> insertItem(InventoryItemModel item) async {
     final db = await _readyDb();
-    await db.insert('items', item.toDb(),
+    int itemNum = item.itemNumber ?? 0;
+    String itemCode = item.itemCode ?? '';
+    if (itemNum <= 0) {
+      final maxVal = Sqflite.firstIntValue(
+              await db.rawQuery('SELECT MAX(itemNumber) FROM items')) ?? 1000;
+      itemNum = (maxVal < 1000 ? 1000 : maxVal) + 1;
+      itemCode = 'ITM-$itemNum';
+    }
+    final itemToSave = item.copyWith(itemNumber: itemNum, itemCode: itemCode);
+
+    await db.insert('items', itemToSave.toDb(),
         conflictAlgorithm: ConflictAlgorithm.replace);
+
+    final apiPayload = {
+      'id': itemToSave.id,
+      'name': itemToSave.name,
+      'sku': itemToSave.barcode,
+      'barcode': itemToSave.barcode,
+      'selling_price': itemToSave.sellingPrice,
+      'purchase_price': itemToSave.purchasePrice,
+      'tax_rate': itemToSave.taxRatePercent,
+      'current_stock': itemToSave.stock,
+      'unit': itemToSave.unit,
+      'category': itemToSave.category,
+      'hsn_sac': itemToSave.hsnSac,
+      'item_number': itemNum,
+      'item_code': itemCode,
+    };
+
+    try {
+      ApiService.createItem(apiPayload).then((res) async {
+        if (res['success'] != true) {
+          final sync = await SyncService.getInstance();
+          await sync.queueMutation(collection: 'items', data: apiPayload);
+        }
+      }).catchError((_) async {
+        final sync = await SyncService.getInstance();
+        await sync.queueMutation(collection: 'items', data: apiPayload);
+      });
+    } catch (_) {
+      SyncService.getInstance().then((sync) => sync.queueMutation(collection: 'items', data: apiPayload));
+    }
   }
 
   Future<void> updateItem(InventoryItemModel item) async {
@@ -245,6 +383,45 @@ class SalesRepository {
     await db.insert('sales_orders', order.toDb(),
         conflictAlgorithm: ConflictAlgorithm.replace);
     await _updateInventoryForSale(order.items);
+
+    // Cloud Sync to Backend API with offline queueing
+    final apiPayload = order.toApiJson();
+    try {
+      ApiService.createSaleOrder(apiPayload).then((res) async {
+        if (res['success'] == true) {
+          debugPrint('✅ Sales invoice #${order.invoiceNo} synced to cloud backend.');
+        } else {
+          final sync = await SyncService.getInstance();
+          await sync.queueMutation(collection: 'salesOrders', data: apiPayload);
+        }
+      }).catchError((e) async {
+        final sync = await SyncService.getInstance();
+        await sync.queueMutation(collection: 'salesOrders', data: apiPayload);
+      });
+    } catch (_) {
+      SyncService.getInstance().then((sync) => sync.queueMutation(collection: 'salesOrders', data: apiPayload));
+    }
+  }
+
+  /// Phase 3: Sync Sale Orders from Cloud Backend into SQLite
+  Future<List<SaleOrderModel>> syncSaleOrdersFromCloud([String? businessId]) async {
+    try {
+      final res = await ApiService.fetchSaleOrders(businessId);
+      if (res['success'] == true && res['orders'] is List) {
+        final db = await _readyDb();
+        final cloudOrders = (res['orders'] as List)
+            .map((o) => SaleOrderModel.fromApi(o as Map<String, dynamic>))
+            .toList();
+        for (final o in cloudOrders) {
+          await db.insert('sales_orders', o.toDb(),
+              conflictAlgorithm: ConflictAlgorithm.replace);
+        }
+        return cloudOrders;
+      }
+    } catch (e) {
+      debugPrint('⚠️ Error syncing sale orders from cloud: $e');
+    }
+    return getSaleOrders();
   }
 
   Future<void> updateSaleOrder(SaleOrderModel order) async {
@@ -319,6 +496,45 @@ class SalesRepository {
     final db = await _readyDb();
     await db.insert('payments', payment.toDb(),
         conflictAlgorithm: ConflictAlgorithm.replace);
+
+    // Cloud Sync to Backend API with offline queueing
+    final apiPayload = payment.toApiJson();
+    try {
+      ApiService.createPayment(apiPayload).then((res) async {
+        if (res['success'] == true) {
+          debugPrint('✅ Payment receipt #${payment.receiptNo} synced to cloud backend.');
+        } else {
+          final sync = await SyncService.getInstance();
+          await sync.queueMutation(collection: 'payments', data: apiPayload);
+        }
+      }).catchError((e) async {
+        final sync = await SyncService.getInstance();
+        await sync.queueMutation(collection: 'payments', data: apiPayload);
+      });
+    } catch (_) {
+      SyncService.getInstance().then((sync) => sync.queueMutation(collection: 'payments', data: apiPayload));
+    }
+  }
+
+  /// Phase 3: Sync Payments from Cloud Backend into SQLite
+  Future<List<PaymentModel>> syncPaymentsFromCloud([String? businessId, String? partyId]) async {
+    try {
+      final res = await ApiService.fetchPayments(businessId, partyId);
+      if (res['success'] == true && res['payments'] is List) {
+        final db = await _readyDb();
+        final cloudPayments = (res['payments'] as List)
+            .map((p) => PaymentModel.fromApi(p as Map<String, dynamic>))
+            .toList();
+        for (final p in cloudPayments) {
+          await db.insert('payments', p.toDb(),
+              conflictAlgorithm: ConflictAlgorithm.replace);
+        }
+        return cloudPayments;
+      }
+    } catch (e) {
+      debugPrint('⚠️ Error syncing payments from cloud: $e');
+    }
+    return [];
   }
 
   Future<void> deletePayment(String id) async {
@@ -440,6 +656,45 @@ class SalesRepository {
     await db.insert('purchase_orders', order.toDb(),
         conflictAlgorithm: ConflictAlgorithm.replace);
     await _updateInventoryForPurchase(order.items);
+
+    // Cloud Sync to Backend API with offline queueing
+    final apiPayload = order.toApiJson();
+    try {
+      ApiService.createPurchaseOrder(apiPayload).then((res) async {
+        if (res['success'] == true) {
+          debugPrint('✅ Purchase order #${order.orderNo} synced to cloud backend.');
+        } else {
+          final sync = await SyncService.getInstance();
+          await sync.queueMutation(collection: 'purchaseOrders', data: apiPayload);
+        }
+      }).catchError((e) async {
+        final sync = await SyncService.getInstance();
+        await sync.queueMutation(collection: 'purchaseOrders', data: apiPayload);
+      });
+    } catch (_) {
+      SyncService.getInstance().then((sync) => sync.queueMutation(collection: 'purchaseOrders', data: apiPayload));
+    }
+  }
+
+  /// Phase 3: Sync Purchase Orders from Cloud Backend into SQLite
+  Future<List<PurchaseOrderModel>> syncPurchaseOrdersFromCloud([String? businessId]) async {
+    try {
+      final res = await ApiService.fetchPurchaseOrders(businessId);
+      if (res['success'] == true && res['orders'] is List) {
+        final db = await _readyDb();
+        final cloudOrders = (res['orders'] as List)
+            .map((o) => PurchaseOrderModel.fromApi(o as Map<String, dynamic>))
+            .toList();
+        for (final o in cloudOrders) {
+          await db.insert('purchase_orders', o.toDb(),
+              conflictAlgorithm: ConflictAlgorithm.replace);
+        }
+        return cloudOrders;
+      }
+    } catch (e) {
+      debugPrint('⚠️ Error syncing purchase orders from cloud: $e');
+    }
+    return getPurchaseOrders();
   }
 
   Future<void> updatePurchaseOrder(PurchaseOrderModel order) async {

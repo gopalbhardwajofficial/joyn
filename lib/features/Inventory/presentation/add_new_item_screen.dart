@@ -10,6 +10,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../../core/constants/tax_rates.dart';
+import '../../../core/services/api_service.dart';
 import '../../../core/theme/joyn_colors.dart';
 import '../../../core/theme/joyn_typography.dart';
 import '../../../core/widgets/joyn_button.dart';
@@ -2256,6 +2257,8 @@ class _AddNewItemScreenState extends State<AddNewItemScreen> {
         stock: int.tryParse(_qtyController.text.trim()) ?? 0,
         photoPath: _photoPath ?? '',
         createdAt: widget.existingItem?.createdAt ?? DateTime.now(),
+        itemNumber: widget.existingItem?.itemNumber,
+        itemCode: widget.existingItem?.itemCode,
       );
 
       debugPrint('Saving item: ${item.toDb()}');
@@ -2267,6 +2270,27 @@ class _AddNewItemScreenState extends State<AddNewItemScreen> {
       } else {
         await _salesRepository.insertItem(item);
         debugPrint('Item inserted successfully');
+      }
+
+      // Sync with PostgreSQL Live Backend
+      try {
+        ApiService.createItem({
+          'name': item.name,
+          'sku': item.barcode,
+          'selling_price': item.sellingPrice,
+          'purchase_price': item.purchasePrice,
+          'tax_rate': item.taxRatePercent,
+          'current_stock': item.stock,
+          'unit': item.unit,
+          'category': item.category,
+          'hsn_sac': item.hsnSac,
+        }).then((res) {
+          debugPrint('Backend sync item response: $res');
+        }).catchError((err) {
+          debugPrint('Backend sync item error: $err');
+        });
+      } catch (e) {
+        debugPrint('API Item sync catch: $e');
       }
 
       final savedItems = await _salesRepository.getItems();
@@ -2647,6 +2671,77 @@ class _AddNewItemScreenState extends State<AddNewItemScreen> {
               controller: _skuController,
               hintText: 'Enter SKU',
               icon: Icons.tag_rounded),
+          const SizedBox(height: 12),
+          // BARCODE / ITEM CODE WITH SCANNER BUTTON
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Item Code / Barcode',
+                style: JoynTypography.bodyMedium.copyWith(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Container(
+                height: 48,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: JoynColors.border.withValues(alpha: 0.8), width: 1.1),
+                ),
+                child: Row(
+                  children: [
+                    const SizedBox(width: 12),
+                    const Icon(Icons.qr_code_2_rounded, size: 20, color: JoynColors.primary),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextField(
+                        controller: _barcodeController,
+                        style: JoynTypography.bodyMedium.copyWith(fontSize: 13.5, fontWeight: FontWeight.w600),
+                        decoration: InputDecoration(
+                          hintText: 'Enter or scan barcode / item code',
+                          hintStyle: JoynTypography.bodyMedium.copyWith(color: JoynColors.secondaryText.withValues(alpha: 0.5), fontSize: 13),
+                          border: InputBorder.none,
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                      ),
+                    ),
+                    InkWell(
+                      onTap: _openScanner,
+                      borderRadius: BorderRadius.circular(10),
+                      child: Container(
+                        margin: const EdgeInsets.only(right: 6),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: JoynColors.primary.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.qr_code_scanner_rounded, size: 16, color: JoynColors.primary),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Scan',
+                              style: JoynTypography.caption.copyWith(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
+                                color: JoynColors.primary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 12),
           _buildQtyUnitRow(),
           const SizedBox(height: 12),

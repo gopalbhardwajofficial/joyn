@@ -540,6 +540,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                 icon: Icons.info_outline_rounded,
                 accentColor: const Color(0xFF7C3AED),
                 children: [
+                  _buildDetailRow('Item ID & Number', _item.displayItemCode),
                   _buildDetailRow(
                       'SKU', _item.barcode.isEmpty ? 'Not Set' : _item.barcode),
                   _buildDetailRow('HSN/SAC',
@@ -716,6 +717,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                             spacing: 6,
                             runSpacing: 6,
                             children: [
+                              _buildHeroPill(
+                                  Icons.fingerprint_rounded, _item.displayItemCode),
                               if (_item.category.isNotEmpty)
                                 _buildHeroPill(
                                     Icons.local_offer_outlined, _item.category),

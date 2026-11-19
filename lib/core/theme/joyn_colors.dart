@@ -9,6 +9,7 @@ class JoynColors {
   static const Color surfaceMuted = Color.fromARGB(255, 239, 239, 242);
   static const Color iconBackground = Color.fromARGB(255, 255, 255, 255);
   static const Color secondaryText = Color.fromARGB(255, 107, 114, 128);
+  static const Color primaryText = Color.fromARGB(255, 17, 24, 39);
   static const Color border = Color.fromARGB(255, 228, 228, 232);
   static const Color success = Color.fromARGB(255, 22, 163, 74);
   static const Color error = Color.fromARGB(255, 220, 38, 38);

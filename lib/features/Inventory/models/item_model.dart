@@ -27,6 +27,8 @@ class InventoryItemModel {
 
   final int stock;
   final DateTime createdAt;
+  final int? itemNumber;
+  final String? itemCode;
 
   InventoryItemModel({
     required this.id,
@@ -48,7 +50,25 @@ class InventoryItemModel {
     this.taxRatePercent = 0,
     this.stock = 0,
     required this.createdAt,
+    this.itemNumber,
+    this.itemCode,
   });
+
+  String get displayItemCode {
+    if (itemCode != null && itemCode!.trim().isNotEmpty) {
+      return itemCode!.trim();
+    }
+    if (itemNumber != null && itemNumber! > 0) {
+      return 'ITM-$itemNumber';
+    }
+    if (id.isNotEmpty) {
+      final digits = id.replaceAll(RegExp(r'\D'), '');
+      if (digits.length >= 4) {
+        return 'ITM-${digits.substring(digits.length - 4)}';
+      }
+    }
+    return 'ITM-1001';
+  }
 
   // Convert to database map
   Map<String, dynamic> toDb() {
@@ -72,11 +92,18 @@ class InventoryItemModel {
       'taxRatePercent': taxRatePercent,
       'stock': stock,
       'createdAt': createdAt.toIso8601String(),
+      'itemNumber': itemNumber,
+      'itemCode': itemCode ?? displayItemCode,
     };
   }
 
   // Create from database map
   factory InventoryItemModel.fromDb(Map<String, dynamic> map) {
+    final parsedNumber = (map['itemNumber'] as num?)?.toInt() ??
+        (map['item_number'] as num?)?.toInt();
+    final parsedCode = (map['itemCode'] as String?) ??
+        (map['item_code'] as String?);
+
     return InventoryItemModel(
       id: map['id'] as String,
       name: map['name'] as String? ?? '',
@@ -84,19 +111,27 @@ class InventoryItemModel {
       barcode: map['barcode'] as String? ?? '',
       unit: map['unit'] as String? ?? 'Pcs',
       category: map['category'] as String? ?? '',
-      hsnSac: map['hsnSac'] as String? ?? '',
+      hsnSac: map['hsnSac'] as String? ?? map['hsn_sac'] as String? ?? '',
       location: map['location'] as String? ?? '',
-      barcodeMode: map['barcodeMode'] as String? ?? 'same',
-      purchasePrice: (map['purchasePrice'] as num?)?.toDouble() ?? 0,
-      sellingPrice: (map['sellingPrice'] as num?)?.toDouble() ?? 0,
-      salePriceTaxMode: map['salePriceTaxMode'] == 'withTax' ? PriceTaxMode.withTax : PriceTaxMode.withoutTax,
-      discountOnSalePrice: (map['discountOnSalePrice'] as num?)?.toDouble() ?? 0,
-      discountType: map['discountType'] == 'value' ? DiscountType.value : DiscountType.percentage,
-      purchasePriceTaxMode: map['purchasePriceTaxMode'] == 'withTax' ? PriceTaxMode.withTax : PriceTaxMode.withoutTax,
-      taxRateLabel: map['taxRateLabel'] as String? ?? 'None',
-      taxRatePercent: (map['taxRatePercent'] as num?)?.toDouble() ?? 0,
+      barcodeMode: map['barcodeMode'] as String? ?? map['barcode_mode'] as String? ?? 'same',
+      purchasePrice: (map['purchasePrice'] as num?)?.toDouble() ?? (map['purchase_price'] as num?)?.toDouble() ?? 0,
+      sellingPrice: (map['sellingPrice'] as num?)?.toDouble() ?? (map['selling_price'] as num?)?.toDouble() ?? 0,
+      salePriceTaxMode: (map['salePriceTaxMode'] == 'withTax' || map['sale_price_tax_mode'] == 'withTax')
+          ? PriceTaxMode.withTax
+          : PriceTaxMode.withoutTax,
+      discountOnSalePrice: (map['discountOnSalePrice'] as num?)?.toDouble() ?? (map['discount_on_sale_price'] as num?)?.toDouble() ?? 0,
+      discountType: (map['discountType'] == 'value' || map['discount_type'] == 'value')
+          ? DiscountType.value
+          : DiscountType.percentage,
+      purchasePriceTaxMode: (map['purchasePriceTaxMode'] == 'withTax' || map['purchase_price_tax_mode'] == 'withTax')
+          ? PriceTaxMode.withTax
+          : PriceTaxMode.withoutTax,
+      taxRateLabel: map['taxRateLabel'] as String? ?? map['tax_rate_label'] as String? ?? 'None',
+      taxRatePercent: (map['taxRatePercent'] as num?)?.toDouble() ?? (map['tax_rate_percent'] as num?)?.toDouble() ?? 0,
       stock: (map['stock'] as num?)?.toInt() ?? 0,
-      createdAt: DateTime.tryParse(map['createdAt'] as String? ?? '') ?? DateTime.now(),
+      createdAt: DateTime.tryParse(map['createdAt'] as String? ?? map['created_at'] as String? ?? '') ?? DateTime.now(),
+      itemNumber: parsedNumber,
+      itemCode: parsedCode,
     );
   }
 

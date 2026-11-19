@@ -8,10 +8,12 @@ import 'package:joyn/features/auth/presentation/company_selection_screen.dart';
 import 'package:joyn/features/auth/presentation/manual_login_screen.dart';
 import 'package:joyn/features/auth/presentation/onboarding_screen.dart';
 import 'package:joyn/features/auth/presentation/otp_verification_screen.dart';
+import 'package:joyn/features/auth/presentation/terms_of_service_screen.dart';
+import 'package:joyn/features/auth/presentation/privacy_policy_screen.dart';
 import 'package:joyn/features/auth/presentation/splash_screen.dart';
-import 'package:joyn/features/barcode/presentation/barcode_screen.dart';
 import 'package:joyn/features/barcode/presentation/label_editor_screen.dart';
 import 'package:joyn/features/barcode/presentation/newlable_screen.dart';
+import 'package:joyn/features/barcode/flashlabel/screens/new_label_screen.dart';
 import 'package:joyn/features/team_management/models/team_member_model.dart';
 import 'package:joyn/features/business_profile/presentation/business_profile_screen.dart';
 import 'package:joyn/features/business_profile/presentation/team_member_activity_log_screen.dart';
@@ -26,6 +28,18 @@ import 'package:joyn/features/orders/presentation/purchase_order_detail_screen.d
 import 'package:joyn/features/orders/models/sales_models.dart';
 import 'package:joyn/features/Inventory/presentation/party_list_screen.dart';
 import 'package:joyn/features/Inventory/presentation/items_list_screen.dart';
+import 'package:joyn/features/backup/presentation/cloud_backup_screen.dart';
+import 'package:joyn/features/notifications/presentation/notifications_screen.dart';
+import 'package:joyn/features/reports/presentation/payment_reminders_screen.dart';
+import 'package:joyn/features/reports/Presentation/gst/gstr1_report_screen.dart';
+import 'package:joyn/features/reports/Presentation/gst/gstr2_report_screen.dart';
+import 'package:joyn/features/reports/Presentation/gst/gstr3b_report_screen.dart';
+import 'package:joyn/features/reports/Presentation/gst/hsn_summary_screen.dart';
+import 'package:joyn/features/reports/Presentation/expenses/manage_expenses_screen.dart';
+import 'package:joyn/features/orders/presentation/quotations_list_screen.dart';
+import 'package:joyn/features/orders/presentation/add_quotation_screen.dart';
+import 'package:joyn/features/orders/presentation/credit_notes_list_screen.dart';
+import 'package:joyn/features/orders/presentation/debit_notes_list_screen.dart';
 import 'route_observer.dart'; // ✅ ADDED
 
 final GoRouter appRouter = GoRouter(
@@ -71,6 +85,22 @@ final GoRouter appRouter = GoRouter(
       pageBuilder: (context, state) => CustomTransitionPage(
         key: state.pageKey,
         child: const CompanySelectionScreen(),
+        transitionsBuilder: _slideTransition,
+      ),
+    ),
+    GoRoute(
+      path: '/terms-of-service',
+      pageBuilder: (context, state) => CustomTransitionPage(
+        key: state.pageKey,
+        child: const TermsOfServiceScreen(),
+        transitionsBuilder: _slideTransition,
+      ),
+    ),
+    GoRoute(
+      path: '/privacy-policy',
+      pageBuilder: (context, state) => CustomTransitionPage(
+        key: state.pageKey,
+        child: const PrivacyPolicyScreen(),
         transitionsBuilder: _slideTransition,
       ),
     ),
@@ -158,6 +188,14 @@ final GoRouter appRouter = GoRouter(
       ),
     ),
     GoRoute(
+      path: '/manage-inventory',
+      pageBuilder: (context, state) => CustomTransitionPage(
+        key: state.pageKey,
+        child: const ManageInventoryScreen(),
+        transitionsBuilder: _slideTransition,
+      ),
+    ),
+    GoRoute(
       path: '/add-new-item',
       pageBuilder: (context, state) => CustomTransitionPage(
         key: state.pageKey,
@@ -182,7 +220,7 @@ final GoRouter appRouter = GoRouter(
     ),
     GoRoute(
       path: '/add-barcode',
-      builder: (context, state) => const NewLabelSizeScreen(),
+      builder: (context, state) => const NewLabelScreen(),
     ),
     GoRoute(
       path: '/party-list',
@@ -223,6 +261,104 @@ final GoRouter appRouter = GoRouter(
           transitionsBuilder: _slideTransition,
         );
       },
+    ),
+    GoRoute(
+      path: '/cloud-backup',
+      pageBuilder: (context, state) => CustomTransitionPage(
+        key: state.pageKey,
+        child: const CloudBackupScreen(),
+        transitionsBuilder: _slideTransition,
+      ),
+    ),
+    GoRoute(
+      path: '/notifications',
+      pageBuilder: (context, state) => CustomTransitionPage(
+        key: state.pageKey,
+        child: const NotificationsScreen(),
+        transitionsBuilder: _slideTransition,
+      ),
+    ),
+    GoRoute(
+      path: '/payment-reminders',
+      pageBuilder: (context, state) => CustomTransitionPage(
+        key: state.pageKey,
+        child: const PaymentRemindersScreen(),
+        transitionsBuilder: _slideTransition,
+      ),
+    ),
+    GoRoute(
+      path: '/gstr-1',
+      pageBuilder: (context, state) => CustomTransitionPage(
+        key: state.pageKey,
+        child: const Gstr1ReportScreen(),
+        transitionsBuilder: _slideTransition,
+      ),
+    ),
+    GoRoute(
+      path: '/gstr-2',
+      pageBuilder: (context, state) => CustomTransitionPage(
+        key: state.pageKey,
+        child: const Gstr2ReportScreen(),
+        transitionsBuilder: _slideTransition,
+      ),
+    ),
+    GoRoute(
+      path: '/gstr-3b',
+      pageBuilder: (context, state) => CustomTransitionPage(
+        key: state.pageKey,
+        child: const Gstr3bReportScreen(),
+        transitionsBuilder: _slideTransition,
+      ),
+    ),
+    GoRoute(
+      path: '/hsn-summary',
+      pageBuilder: (context, state) => CustomTransitionPage(
+        key: state.pageKey,
+        child: const HsnSummaryScreen(),
+        transitionsBuilder: _slideTransition,
+      ),
+    ),
+    GoRoute(
+      path: '/expenses',
+      pageBuilder: (context, state) => CustomTransitionPage(
+        key: state.pageKey,
+        child: const ManageExpensesScreen(),
+        transitionsBuilder: _slideTransition,
+      ),
+    ),
+
+    // --- Phase 11: Quotations / Estimates & Returns ---
+    GoRoute(
+      path: '/quotations',
+      pageBuilder: (context, state) => CustomTransitionPage(
+        key: state.pageKey,
+        child: const QuotationsListScreen(),
+        transitionsBuilder: _slideTransition,
+      ),
+    ),
+    GoRoute(
+      path: '/add-quotation',
+      pageBuilder: (context, state) => CustomTransitionPage(
+        key: state.pageKey,
+        child: const AddQuotationScreen(),
+        transitionsBuilder: _slideTransition,
+      ),
+    ),
+    GoRoute(
+      path: '/credit-notes',
+      pageBuilder: (context, state) => CustomTransitionPage(
+        key: state.pageKey,
+        child: const CreditNotesListScreen(),
+        transitionsBuilder: _slideTransition,
+      ),
+    ),
+    GoRoute(
+      path: '/debit-notes',
+      pageBuilder: (context, state) => CustomTransitionPage(
+        key: state.pageKey,
+        child: const DebitNotesListScreen(),
+        transitionsBuilder: _slideTransition,
+      ),
     ),
   ],
 );

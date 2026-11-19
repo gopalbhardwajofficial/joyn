@@ -24,16 +24,24 @@ class _OtpVerificationScreenState extends ConsumerState<OtpVerificationScreen>
   @override
   void initState() {
     super.initState();
+    _initAutoFill();
+  }
+
+  void _initAutoFill() {
     listenForCode();
   }
 
   @override
   void codeUpdated() {
     if (code != null && code!.isNotEmpty) {
-      setState(() {
-        _enteredCode = code!;
-      });
-      _verifyOtp();
+      final digits = code!.replaceAll(RegExp(r'\D'), '');
+      if (digits.length >= 4) {
+        final otp4 = digits.substring(0, 4);
+        setState(() {
+          _enteredCode = otp4;
+        });
+        _verifyOtp();
+      }
     }
   }
 
@@ -49,12 +57,19 @@ class _OtpVerificationScreenState extends ConsumerState<OtpVerificationScreen>
       _isVerifying = true;
     });
 
-    // Mock verification delay for authentic feel
-    await Future.delayed(const Duration(milliseconds: 300));
-    await ref.read(authProvider.notifier).completeLogin();
+    final res = await ref.read(authProvider.notifier).verifyOtpApi(_enteredCode);
 
     if (mounted) {
-      context.push('/company-selection');
+      setState(() {
+        _isVerifying = false;
+      });
+      if (res['success'] == true) {
+        context.push('/company-selection');
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(res['message'] ?? 'OTP verification failed')),
+        );
+      }
     }
   }
 
@@ -94,7 +109,7 @@ class _OtpVerificationScreenState extends ConsumerState<OtpVerificationScreen>
 
               // Subtitle
               Text(
-                'Enter the 6-digit code sent to\n${authState.phoneNumber}',
+                'Enter the 4-digit code sent to\n${authState.phoneNumber}',
                 style: JoynTypography.subtitle.copyWith(
                   height: 1.4,
                 ),
@@ -102,9 +117,10 @@ class _OtpVerificationScreenState extends ConsumerState<OtpVerificationScreen>
 
               const SizedBox(height: 36),
 
-              // 6-digit OTP Box with Auto Read support
+              // 4-digit OTP Box with Auto Read support
               JoynOtpInput(
-                length: 6,
+                length: 4,
+                value: _enteredCode,
                 onChanged: (code) {
                   setState(() {
                     _enteredCode = code;
@@ -131,8 +147,9 @@ class _OtpVerificationScreenState extends ConsumerState<OtpVerificationScreen>
                         ),
                       )
                     : TextButton(
-                        onPressed: () {
+                        onPressed: () async {
                           ref.read(authProvider.notifier).startOtpTimer();
+                          await ref.read(authProvider.notifier).sendOtpApi(authState.phoneNumber);
                         },
                         child: Text(
                           'Resend OTP',

@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "1031382782366",
+    "project_id": "joyn-app-31798",
+    "storage_bucket": "joyn-app-31798.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1031382782366:android:0d5cbe395bbbcd912e068f",
+        "android_client_info": {
+          "package_name": "com.joyn.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1031382782366-5e3dog1ce4di79ep7gruapv49mf0tkof.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.joyn.app",
+            "certificate_hash": "77be97e93e8ebbebc70fcc3fd535dbf70e131c57"
+          }
+        },
+        {
+          "client_id": "1031382782366-mg6d7m4nj9uk751i3o33clfcee4mnrr2.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB85owS9cOqdB3dzGBJXCIpfuJ0eyyJ1YY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1031382782366-mg6d7m4nj9uk751i3o33clfcee4mnrr2.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1031382782366-u2jfh70dt6m5n0aii6tdq0klmfff3ckk.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.joyn.app"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

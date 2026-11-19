@@ -956,6 +956,9 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
                             spacing: 6,
                             runSpacing: 6,
                             children: [
+                              _buildHeroPill(
+                                  Icons.badge_outlined,
+                                  _party.displayPartyCode),
                               if (_party.category.isNotEmpty)
                                 _buildHeroPill(
                                     Icons.local_offer_outlined,

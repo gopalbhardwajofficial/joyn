@@ -3,7 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:joyn/core/theme/joyn_typography.dart';
 import 'package:joyn/core/theme/joyn_colors.dart';
-import 'package:joyn/core/widgets/Premium_widget.dart';
+import 'package:joyn/core/services/api_service.dart';
+import 'package:joyn/core/services/report_export_service.dart';
 
 enum RowStyle { normal, subtotal }
 
@@ -39,61 +40,119 @@ class _BalanceSheetScreenState extends State<BalanceSheetScreen> with SingleTick
   late TabController _tabController;
 
   String selectedPeriod = 'This Month';
-  DateTime fromDate = DateTime(2026, 9, 1);
-  DateTime toDate = DateTime(2026, 9, 30);
+  DateTime fromDate = DateTime.now();
+  DateTime toDate = DateTime.now();
   bool _isLoading = false;
 
   final Set<String> expandedRows = {};
 
-  double get totalLiabilities => 1100.00;
-  double get totalAssets => 1100.00;
+  double totalLiabilities = 0.00;
+  double totalAssets = 0.00;
 
-  late final List<BsCard> liabilityCards = [
-    BsCard([
-      BsRow(label: "Owner's Equity", amount: 0.00),
-      BsRow(
-        label: 'Reserves & Surplus',
-        amount: 1100.00,
-        expandable: true,
-        children: [BsRow(label: 'Net Profit', amount: 1100.00)],
-      ),
-      BsRow(label: 'Equity/Capital', amount: 1100.00, style: RowStyle.subtotal),
-    ]),
-    BsCard([
-      BsRow(label: 'Loan Accounts', amount: 0.00),
-      BsRow(label: 'Long Term Liabilities', amount: 0.00, style: RowStyle.subtotal),
-    ]),
-    BsCard([
-      BsRow(label: 'Sundry Creditors', amount: 0.00),
-      BsRow(label: 'Outward Duties & Taxes', amount: 0.00),
-      BsRow(label: 'Other Current Liabilities', amount: 0.00),
-      BsRow(label: 'Current Liabilities', amount: 0.00, style: RowStyle.subtotal),
-    ]),
-    BsCard([BsRow(label: 'Other Liabilities', amount: 0.00, style: RowStyle.subtotal)]),
-  ];
-
-  late final List<BsCard> assetCards = [
-    BsCard([
-      BsRow(label: 'Cash In Hand', amount: 500.00),
-      BsRow(label: 'Bank Accounts', amount: 0.00),
-      BsRow(label: 'Cash & Bank Balance', amount: 500.00, style: RowStyle.subtotal),
-    ]),
-    BsCard([
-      BsRow(label: 'Sundry Debtors', amount: 500.00),
-      BsRow(label: 'Inward Duties & Taxes', amount: 0.00),
-      BsRow(label: 'Other Current Assets', amount: 0.00),
-      BsRow(label: 'Stock In Hand', amount: 0.00),
-      BsRow(label: 'Current Assets', amount: 1000.00, style: RowStyle.subtotal),
-    ]),
-    BsCard([BsRow(label: 'Fixed Assets', amount: 0.00, style: RowStyle.subtotal)]),
-    BsCard([BsRow(label: 'Other Assets', amount: 100.00, style: RowStyle.subtotal)]),
-  ];
+  List<BsCard> liabilityCards = [];
+  List<BsCard> assetCards = [];
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(() => setState(() {}));
+    final now = DateTime.now();
+    fromDate = DateTime(now.year, now.month, 1);
+    toDate = DateTime(now.year, now.month + 1, 0);
+    _fetchBalanceSheet();
+  }
+
+  Future<void> _fetchBalanceSheet() async {
+    setState(() => _isLoading = true);
+    final asOfStr = DateFormat('yyyy-MM-dd').format(toDate);
+
+    try {
+      final res = await ApiService.fetchBalanceSheet(asOfDate: asOfStr);
+      if (res['success'] == true) {
+        final bs = (res['balanceSheet'] as Map<String, dynamic>?) ?? res;
+        final assets = bs['assets'] as Map<String, dynamic>? ?? {};
+        final curAssets = assets['currentAssets'] as Map<String, dynamic>? ?? {};
+        final liabAndEq = bs['liabilitiesAndEquity'] as Map<String, dynamic>? ?? {};
+        final curLiab = liabAndEq['currentLiabilities'] as Map<String, dynamic>? ?? {};
+        final eq = liabAndEq['equity'] as Map<String, dynamic>? ?? {};
+
+        final cashInHand = (curAssets['cashInHand'] as num?)?.toDouble() ?? (res['cashInHand'] as num?)?.toDouble() ?? 0.0;
+        final bankAccounts = (curAssets['bankAccounts'] as num?)?.toDouble() ?? 0.0;
+        final sundryDebtors = (curAssets['sundryDebtors'] as num?)?.toDouble() ?? (res['debtors'] as num?)?.toDouble() ?? 0.0;
+        final stockInHand = (curAssets['stockInHand'] as num?)?.toDouble() ?? (res['stockValuation'] as num?)?.toDouble() ?? 0.0;
+        final totalCurAssets = (curAssets['totalCurrentAssets'] as num?)?.toDouble() ?? (cashInHand + bankAccounts + sundryDebtors + stockInHand);
+        final fixedAssets = (assets['fixedAssets'] as num?)?.toDouble() ?? 0.0;
+        final otherAssets = (assets['otherAssets'] as num?)?.toDouble() ?? 0.0;
+        final tAssets = (assets['totalAssets'] as num?)?.toDouble() ?? (res['totalAssets'] as num?)?.toDouble() ?? (totalCurAssets + fixedAssets + otherAssets);
+
+        final sundryCreditors = (curLiab['sundryCreditors'] as num?)?.toDouble() ?? (res['creditors'] as num?)?.toDouble() ?? 0.0;
+        final dutiesAndTaxes = (curLiab['dutiesAndTaxes'] as num?)?.toDouble() ?? 0.0;
+        final otherCurLiab = (curLiab['otherCurrentLiabilities'] as num?)?.toDouble() ?? 0.0;
+        final totalCurLiab = (curLiab['totalCurrentLiabilities'] as num?)?.toDouble() ?? (sundryCreditors + dutiesAndTaxes + otherCurLiab);
+        final longTermLiab = (liabAndEq['longTermLiabilities'] as num?)?.toDouble() ?? 0.0;
+        final ownersEquity = (eq['ownersEquity'] as num?)?.toDouble() ?? 0.0;
+        final reservesAndSurplus = (eq['reservesAndSurplus'] as num?)?.toDouble() ?? (res['totalEquity'] as num?)?.toDouble() ?? 0.0;
+        final netProfit = (eq['netProfit'] as num?)?.toDouble() ?? (res['totalEquity'] as num?)?.toDouble() ?? 0.0;
+        final totalEquity = (eq['totalEquity'] as num?)?.toDouble() ?? (ownersEquity + reservesAndSurplus);
+        final tLiab = (liabAndEq['totalLiabilitiesAndEquity'] as num?)?.toDouble() ?? (res['totalLiabilities'] as num?)?.toDouble() ?? (totalCurLiab + longTermLiab + totalEquity);
+
+        final mappedAssetCards = [
+          BsCard([
+            BsRow(label: 'Cash In Hand', amount: cashInHand),
+            BsRow(label: 'Bank Accounts', amount: bankAccounts),
+            BsRow(label: 'Cash & Bank Balance', amount: cashInHand + bankAccounts, style: RowStyle.subtotal),
+          ]),
+          BsCard([
+            BsRow(label: 'Sundry Debtors', amount: sundryDebtors),
+            BsRow(label: 'Stock In Hand', amount: stockInHand),
+            BsRow(label: 'Inward Duties & Taxes', amount: 0.00),
+            BsRow(label: 'Other Current Assets', amount: 0.00),
+            BsRow(label: 'Current Assets', amount: totalCurAssets, style: RowStyle.subtotal),
+          ]),
+          BsCard([BsRow(label: 'Fixed Assets', amount: fixedAssets, style: RowStyle.subtotal)]),
+          BsCard([BsRow(label: 'Other Assets', amount: otherAssets, style: RowStyle.subtotal)]),
+        ];
+
+        final mappedLiabilityCards = [
+          BsCard([
+            BsRow(label: "Owner's Equity", amount: ownersEquity),
+            BsRow(
+              label: 'Reserves & Surplus',
+              amount: reservesAndSurplus,
+              expandable: true,
+              children: [BsRow(label: 'Net Profit', amount: netProfit)],
+            ),
+            BsRow(label: 'Equity/Capital', amount: totalEquity, style: RowStyle.subtotal),
+          ]),
+          BsCard([
+            BsRow(label: 'Loan Accounts', amount: 0.00),
+            BsRow(label: 'Long Term Liabilities', amount: longTermLiab, style: RowStyle.subtotal),
+          ]),
+          BsCard([
+            BsRow(label: 'Sundry Creditors', amount: sundryCreditors),
+            BsRow(label: 'Outward Duties & Taxes', amount: dutiesAndTaxes),
+            BsRow(label: 'Other Current Liabilities', amount: otherCurLiab),
+            BsRow(label: 'Current Liabilities', amount: totalCurLiab, style: RowStyle.subtotal),
+          ]),
+          BsCard([BsRow(label: 'Other Liabilities', amount: 0.00, style: RowStyle.subtotal)]),
+        ];
+
+        if (mounted) {
+          setState(() {
+            totalAssets = tAssets;
+            totalLiabilities = tLiab;
+            assetCards = mappedAssetCards;
+            liabilityCards = mappedLiabilityCards;
+            _isLoading = false;
+          });
+        }
+      } else {
+        if (mounted) setState(() => _isLoading = false);
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -115,7 +174,7 @@ class _BalanceSheetScreenState extends State<BalanceSheetScreen> with SingleTick
             primary: JoynColors.primary,
             surface: JoynColors.iconBackground,
           ),
-          dialogBackgroundColor: JoynColors.background,
+          dialogTheme: const DialogThemeData(backgroundColor: JoynColors.background),
         ),
         child: child!,
       ),
@@ -125,10 +184,8 @@ class _BalanceSheetScreenState extends State<BalanceSheetScreen> with SingleTick
         fromDate = picked.start;
         toDate = picked.end;
         selectedPeriod = 'Custom';
-        _isLoading = true;
       });
-      await Future.delayed(const Duration(milliseconds: 500));
-      if (mounted) setState(() => _isLoading = false);
+      _fetchBalanceSheet();
     }
   }
 
@@ -183,7 +240,31 @@ class _BalanceSheetScreenState extends State<BalanceSheetScreen> with SingleTick
         ),
       ),
     );
-    if (result != null) setState(() => selectedPeriod = result);
+    if (result != null) {
+      final now = DateTime.now();
+      setState(() {
+        selectedPeriod = result;
+        if (result == 'Today') {
+          fromDate = DateTime(now.year, now.month, now.day);
+          toDate = DateTime(now.year, now.month, now.day);
+        } else if (result == 'This Week') {
+          final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
+          fromDate = DateTime(startOfWeek.year, startOfWeek.month, startOfWeek.day);
+          toDate = DateTime(now.year, now.month, now.day);
+        } else if (result == 'This Month') {
+          fromDate = DateTime(now.year, now.month, 1);
+          toDate = DateTime(now.year, now.month + 1, 0);
+        } else if (result == 'This Year') {
+          fromDate = DateTime(now.year, 1, 1);
+          toDate = DateTime(now.year, 12, 31);
+        }
+      });
+      if (result == 'Custom') {
+        _pickDateRange();
+      } else {
+        _fetchBalanceSheet();
+      }
+    }
   }
 
   @override
@@ -215,14 +296,14 @@ class _BalanceSheetScreenState extends State<BalanceSheetScreen> with SingleTick
             label: 'Pdf',
             icon: Icons.picture_as_pdf_rounded,
             color: const Color(0xFFDC2626),
-            onTap: () => _showSnackBar('Exporting PDF...'),
+            onTap: _exportRealPdf,
           ),
           const SizedBox(width: 6),
           _buildAppBarIconButton(
             label: 'xls',
             icon: Icons.grid_on_rounded,
             color: JoynColors.success,
-            onTap: () => _showSnackBar('Exporting Excel...'),
+            onTap: _exportRealExcel,
           ),
           const SizedBox(width: 16),
         ],
@@ -442,19 +523,87 @@ class _BalanceSheetScreenState extends State<BalanceSheetScreen> with SingleTick
     );
   }
 
-  void _showSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          message,
-          style: JoynTypography.bodyMedium.copyWith(color: Colors.white),
-        ),
-        backgroundColor: JoynColors.primary,
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.all(16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        duration: const Duration(milliseconds: 1500),
-      ),
+  Future<void> _exportRealPdf() async {
+    final asOfStr = DateFormat('dd/MM/yyyy').format(toDate);
+    final currency = NumberFormat('#,##,##0.00', 'en_IN');
+
+    final tableHeaders = ['Category', 'Account Item', 'Sub-Account', 'Amount'];
+    final tableRows = <List<String>>[];
+
+    // Assets
+    for (final card in assetCards) {
+      for (final row in card.rows) {
+        tableRows.add(['Asset', row.label, '', '₹ ${currency.format(row.amount)}']);
+        for (final child in row.children) {
+          tableRows.add(['Asset', row.label, child.label, '₹ ${currency.format(child.amount)}']);
+        }
+      }
+    }
+    // Liabilities
+    for (final card in liabilityCards) {
+      for (final row in card.rows) {
+        tableRows.add(['Liability & Equity', row.label, '', '₹ ${currency.format(row.amount)}']);
+        for (final child in row.children) {
+          tableRows.add(['Liability & Equity', row.label, child.label, '₹ ${currency.format(child.amount)}']);
+        }
+      }
+    }
+
+    final summary = {
+      'As Of Date': asOfStr,
+      'Total Assets': '₹ ${currency.format(totalAssets)}',
+      'Total Liabilities & Equity': '₹ ${currency.format(totalLiabilities)}',
+    };
+
+    await ReportExportService.showPdfOptionsSheet(
+      context: context,
+      title: 'Balance Sheet Report',
+      periodLabel: 'As of $asOfStr',
+      summaryStats: summary,
+      tableHeaders: tableHeaders,
+      tableRows: tableRows,
+    );
+  }
+
+  Future<void> _exportRealExcel() async {
+    final asOfStr = DateFormat('dd/MM/yyyy').format(toDate);
+    final currency = NumberFormat('#,##,##0.00', 'en_IN');
+
+    final tableHeaders = ['Category', 'Account Item', 'Sub-Account', 'Amount (INR)'];
+    final tableRows = <List<String>>[];
+
+    // Assets
+    for (final card in assetCards) {
+      for (final row in card.rows) {
+        tableRows.add(['Asset', row.label, '', row.amount.toStringAsFixed(2)]);
+        for (final child in row.children) {
+          tableRows.add(['Asset', row.label, child.label, child.amount.toStringAsFixed(2)]);
+        }
+      }
+    }
+    // Liabilities
+    for (final card in liabilityCards) {
+      for (final row in card.rows) {
+        tableRows.add(['Liability & Equity', row.label, '', row.amount.toStringAsFixed(2)]);
+        for (final child in row.children) {
+          tableRows.add(['Liability & Equity', row.label, child.label, child.amount.toStringAsFixed(2)]);
+        }
+      }
+    }
+
+    final summary = {
+      'As Of Date': asOfStr,
+      'Total Assets': '₹ ${currency.format(totalAssets)}',
+      'Total Liabilities & Equity': '₹ ${currency.format(totalLiabilities)}',
+    };
+
+    await ReportExportService.showExcelOptionsSheet(
+      context: context,
+      title: 'Balance Sheet Report',
+      periodLabel: 'As of $asOfStr',
+      summaryStats: summary,
+      tableHeaders: tableHeaders,
+      tableRows: tableRows,
     );
   }
 }

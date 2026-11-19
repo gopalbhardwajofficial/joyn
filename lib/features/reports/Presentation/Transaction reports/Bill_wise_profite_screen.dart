@@ -3,7 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:joyn/core/theme/joyn_typography.dart';
 import 'package:joyn/core/theme/joyn_colors.dart';
-import 'package:joyn/core/widgets/Premium_widget.dart';
+import 'package:joyn/core/services/api_service.dart';
+import 'package:joyn/core/services/report_export_service.dart';
 
 class BillProfit {
   final String partyName;
@@ -30,17 +31,56 @@ class BillWiseProfitScreen extends StatefulWidget {
 
 class _BillWiseProfitScreenState extends State<BillWiseProfitScreen> {
   String selectedPeriod = 'This Month';
-  DateTime fromDate = DateTime(2026, 9, 1);
-  DateTime toDate = DateTime(2026, 9, 30);
+  DateTime fromDate = DateTime.now();
+  DateTime toDate = DateTime.now();
   bool _isLoading = false;
 
-  final List<BillProfit> bills = [
-    BillProfit(partyName: 'Gopal', date: DateTime(2026, 9, 5), billNo: 1, saleAmount: 1000.00, profitLoss: 1000.00),
-    BillProfit(partyName: 'gill', date: DateTime(2026, 9, 5), billNo: 2, saleAmount: 100.00, profitLoss: 100.00),
-  ];
+  List<BillProfit> bills = [];
 
   double get totalSaleAmount => bills.fold(0, (sum, b) => sum + b.saleAmount);
   double get totalProfitLoss => bills.fold(0, (sum, b) => sum + b.profitLoss);
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    fromDate = DateTime(now.year, now.month, 1);
+    toDate = DateTime(now.year, now.month + 1, 0);
+    _fetchBillWiseProfit();
+  }
+
+  Future<void> _fetchBillWiseProfit() async {
+    setState(() => _isLoading = true);
+    final startStr = DateFormat('yyyy-MM-dd').format(fromDate);
+    final endStr = DateFormat('yyyy-MM-dd').format(toDate);
+
+    try {
+      final res = await ApiService.fetchBillWiseProfit(startDate: startStr, endDate: endStr);
+      if (res['success'] == true) {
+        final rawInvoices = res['invoices'] as List? ?? [];
+        final mapped = <BillProfit>[];
+        for (final inv in rawInvoices) {
+          mapped.add(BillProfit(
+            partyName: inv['partyName']?.toString() ?? 'Unknown',
+            date: DateTime.tryParse(inv['date']?.toString() ?? '') ?? DateTime.now(),
+            billNo: (inv['billNo'] as num?)?.toInt() ?? 0,
+            saleAmount: (inv['saleAmount'] as num?)?.toDouble() ?? 0.0,
+            profitLoss: (inv['profitLoss'] as num?)?.toDouble() ?? 0.0,
+          ));
+        }
+        if (mounted) {
+          setState(() {
+            bills = mapped;
+            _isLoading = false;
+          });
+        }
+      } else {
+        if (mounted) setState(() => _isLoading = false);
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
 
   Future<void> _pickDateRange() async {
     HapticFeedback.lightImpact();
@@ -55,7 +95,7 @@ class _BillWiseProfitScreenState extends State<BillWiseProfitScreen> {
             primary: JoynColors.primary,
             surface: JoynColors.iconBackground,
           ),
-          dialogBackgroundColor: JoynColors.background,
+          dialogTheme: const DialogThemeData(backgroundColor: JoynColors.background),
         ),
         child: child!,
       ),
@@ -65,10 +105,8 @@ class _BillWiseProfitScreenState extends State<BillWiseProfitScreen> {
         fromDate = picked.start;
         toDate = picked.end;
         selectedPeriod = 'Custom';
-        _isLoading = true;
       });
-      await Future.delayed(const Duration(milliseconds: 500));
-      if (mounted) setState(() => _isLoading = false);
+      _fetchBillWiseProfit();
     }
   }
 
@@ -123,7 +161,31 @@ class _BillWiseProfitScreenState extends State<BillWiseProfitScreen> {
         ),
       ),
     );
-    if (result != null) setState(() => selectedPeriod = result);
+    if (result != null) {
+      final now = DateTime.now();
+      setState(() {
+        selectedPeriod = result;
+        if (result == 'Today') {
+          fromDate = DateTime(now.year, now.month, now.day);
+          toDate = DateTime(now.year, now.month, now.day);
+        } else if (result == 'This Week') {
+          final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
+          fromDate = DateTime(startOfWeek.year, startOfWeek.month, startOfWeek.day);
+          toDate = DateTime(now.year, now.month, now.day);
+        } else if (result == 'This Month') {
+          fromDate = DateTime(now.year, now.month, 1);
+          toDate = DateTime(now.year, now.month + 1, 0);
+        } else if (result == 'This Year') {
+          fromDate = DateTime(now.year, 1, 1);
+          toDate = DateTime(now.year, 12, 31);
+        }
+      });
+      if (result == 'Custom') {
+        _pickDateRange();
+      } else {
+        _fetchBillWiseProfit();
+      }
+    }
   }
 
   @override
@@ -156,14 +218,14 @@ class _BillWiseProfitScreenState extends State<BillWiseProfitScreen> {
             label: 'Pdf',
             icon: Icons.picture_as_pdf_rounded,
             color: const Color(0xFFDC2626),
-            onTap: () => _showSnackBar('Exporting PDF...'),
+            onTap: _exportRealPdf,
           ),
           const SizedBox(width: 6),
           _buildAppBarIconButton(
             label: 'xls',
             icon: Icons.grid_on_rounded,
             color: JoynColors.success,
-            onTap: () => _showSnackBar('Exporting Excel...'),
+            onTap: _exportRealExcel,
           ),
           const SizedBox(width: 16),
         ],
@@ -745,19 +807,65 @@ class _BillWiseProfitScreenState extends State<BillWiseProfitScreen> {
     );
   }
 
-  void _showSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          message,
-          style: JoynTypography.bodyMedium.copyWith(color: Colors.white),
-        ),
-        backgroundColor: JoynColors.primary,
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.all(16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        duration: const Duration(milliseconds: 1500),
-      ),
+  Future<void> _exportRealPdf() async {
+    final dateFmt = DateFormat('dd/MM/yyyy');
+    final periodStr = '${dateFmt.format(fromDate)} - ${dateFmt.format(toDate)}';
+    final currency = NumberFormat('#,##,##0.00', 'en_IN');
+
+    final tableHeaders = ['Date', 'Bill #', 'Party Name', 'Sale Amount', 'Profit / Loss'];
+    final tableRows = bills.map((b) {
+      final sign = b.profitLoss >= 0 ? '+' : '-';
+      return [
+        dateFmt.format(b.date),
+        '#${b.billNo}',
+        b.partyName,
+        '₹ ${currency.format(b.saleAmount)}',
+        '$sign₹ ${currency.format(b.profitLoss.abs())}',
+      ];
+    }).toList();
+
+    final summary = {
+      'Total Bills': '${bills.length}',
+      'Total Sales': '₹ ${currency.format(totalSaleAmount)}',
+      'Total Profit / Loss': '₹ ${currency.format(totalProfitLoss)}',
+    };
+
+    await ReportExportService.showPdfOptionsSheet(
+      context: context,
+      title: 'Bill Wise Profit Report',
+      periodLabel: periodStr,
+      summaryStats: summary,
+      tableHeaders: tableHeaders,
+      tableRows: tableRows,
+    );
+  }
+
+  Future<void> _exportRealExcel() async {
+    final dateFmt = DateFormat('dd/MM/yyyy');
+    final periodStr = '${dateFmt.format(fromDate)} - ${dateFmt.format(toDate)}';
+
+    final tableHeaders = ['Date', 'Bill #', 'Party Name', 'Sale Amount (INR)', 'Profit/Loss (INR)'];
+    final tableRows = bills.map((b) => [
+      dateFmt.format(b.date),
+      '${b.billNo}',
+      b.partyName,
+      b.saleAmount.toStringAsFixed(2),
+      b.profitLoss.toStringAsFixed(2),
+    ]).toList();
+
+    final summary = {
+      'Total Bills': '${bills.length}',
+      'Total Sales': totalSaleAmount.toStringAsFixed(2),
+      'Total Profit / Loss': totalProfitLoss.toStringAsFixed(2),
+    };
+
+    await ReportExportService.showExcelOptionsSheet(
+      context: context,
+      title: 'Bill Wise Profit Report',
+      periodLabel: periodStr,
+      summaryStats: summary,
+      tableHeaders: tableHeaders,
+      tableRows: tableRows,
     );
   }
 }

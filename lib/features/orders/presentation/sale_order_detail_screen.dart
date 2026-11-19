@@ -8,8 +8,12 @@ import '../../../core/theme/joyn_typography.dart';
 import '../models/sales_models.dart';
 import '../data/sales_repository.dart';
 import 'add_sale_order_screen.dart';
+import 'package:share_plus/share_plus.dart';
+import '../../../core/services/api_service.dart';
 // ⚠️ Adjust this import path to wherever InvoicePreviewScreen actually lives in your project.
 import 'package:joyn/features/invoice/presentation/InvoicePreviewScreen.dart';
+import '../../business_profile/data/business_profile_repository.dart';
+import '../../../core/services/local_storage_service.dart';
 
 class _P {
   static const double rMd = 14;
@@ -299,27 +303,144 @@ class _SaleOrderDetailScreenState extends State<SaleOrderDetailScreen> {
     }
   }
 
-  // ✅ CHANGED — ab plain text share ki jagah InvoicePreviewScreen pe navigate karta hai
   void _shareOrder() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => InvoicePreviewScreen(
-          data: InvoicePreviewData(
-            invoiceNo: _order.invoiceNo,
-            date: _order.date,
-            customerName: _order.isOneTimeCustomer
-                ? 'One Time Customer'
-                : _order.customerName,
-            customerPhone: _order.isOneTimeCustomer ? '' : _order.customerPhone,
-            items: _items,
-            totalAmount: _totalAmount,
-            receivedAmount: _receivedAmount,
-            // TODO: business details ko apni Business Profile se pull karo
-            businessName: 'Your Business',
-            businessPhone: '',
-            businessEmail: '',
-            title: 'Tax Invoice',
-          ),
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: JoynColors.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.share_rounded, color: JoynColors.primary, size: 22),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  'Share Invoice #${_order.invoiceNo}',
+                  style: JoynTypography.titleMedium.copyWith(fontWeight: FontWeight.w800),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            ListTile(
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(color: const Color(0xFF25D366).withValues(alpha: 0.15), shape: BoxShape.circle),
+                child: const Icon(Icons.chat_rounded, color: Color(0xFF25D366), size: 20),
+              ),
+              title: const Text('Share Link on WhatsApp / SMS', style: TextStyle(fontWeight: FontWeight.w700)),
+              subtitle: const Text('Includes public bill link and amount breakdown'),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              tileColor: const Color(0xFFF8FAFC),
+              onTap: () async {
+                Navigator.pop(ctx);
+                try {
+                  final res = await ApiService.getWhatsAppShareLink(_order.invoiceNo.toString());
+                  if (res['success'] == true && res['whatsappText'] != null) {
+                    Share.share(res['whatsappText'], subject: 'Tax Invoice INV-${_order.invoiceNo}');
+                  } else {
+                    Share.share('Tax Invoice INV-${_order.invoiceNo}\nTotal: ₹${_order.totalAmount}');
+                  }
+                } catch (_) {
+                  Share.share('Tax Invoice INV-${_order.invoiceNo}\nTotal: ₹${_order.totalAmount}');
+                }
+              },
+            ),
+            const SizedBox(height: 10),
+            ListTile(
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(color: JoynColors.primary.withValues(alpha: 0.1), shape: BoxShape.circle),
+                child: const Icon(Icons.picture_as_pdf_rounded, color: JoynColors.primary, size: 20),
+              ),
+              title: const Text('View Full PDF & Print', style: TextStyle(fontWeight: FontWeight.w700)),
+              subtitle: const Text('Preview layout, custom templates & direct printing'),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              tileColor: const Color(0xFFF8FAFC),
+              onTap: () async {
+                Navigator.pop(ctx);
+                final profile = await BusinessProfileRepository().getBusinessProfile();
+
+                String custPhone = _order.customerPhone;
+                String custAddress = '';
+                if (!_order.isOneTimeCustomer && _order.partyId.isNotEmpty) {
+                  try {
+                    final party = await _salesRepository.getPartyById(_order.partyId);
+                    if (party != null) {
+                      if (custPhone.isEmpty && party.contactNumber.isNotEmpty) {
+                        custPhone = party.contactNumber;
+                      }
+                      custAddress = [
+                        if (party.address.isNotEmpty) party.address,
+                        if (party.city.isNotEmpty) party.city,
+                      ].join(', ');
+                    }
+                  } catch (_) {}
+                }
+
+                final bizAddr = [
+                  if (profile?.address.isNotEmpty == true) profile!.address,
+                  if (profile?.city.isNotEmpty == true) profile!.city,
+                  if (profile?.state.isNotEmpty == true) profile!.state,
+                  if (profile?.pincode.isNotEmpty == true) profile!.pincode,
+                ].join(', ');
+
+                final resolvedBusinessName = (profile?.businessName.isNotEmpty == true && profile!.businessName != 'My Business')
+                    ? profile!.businessName
+                    : (LocalStorageService().businessName.isNotEmpty
+                        ? LocalStorageService().businessName
+                        : 'JOYN Enterprise');
+
+                if (!mounted) return;
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => InvoicePreviewScreen(
+                      data: InvoicePreviewData(
+                        invoiceNo: _order.invoiceNo,
+                        date: _order.date,
+                        customerName: _order.isOneTimeCustomer
+                            ? 'One Time Customer'
+                            : (_order.customerName.isNotEmpty ? _order.customerName : 'Customer'),
+                        customerPhone: _order.isOneTimeCustomer ? '' : custPhone,
+                        customerAddress: custAddress,
+                        items: _items,
+                        totalAmount: _totalAmount,
+                        receivedAmount: _receivedAmount,
+                        businessName: resolvedBusinessName,
+                        businessPhone: profile?.phone1 ?? LocalStorageService().phoneNumber,
+                        businessEmail: profile?.email ?? LocalStorageService().email,
+                        businessAddress: bizAddr,
+                        businessGstin: profile?.gstNumber ?? '',
+                        stateOfSupply: _order.stateOfSupply,
+                        paymentMode: _order.paymentType,
+                        termsAndConditions: _order.termsAndConditions,
+                        logoPath: profile?.logoPath,
+                        logoUrl: profile?.logoUrl,
+                        bankName: profile?.bankName ?? '',
+                        accountNumber: profile?.accountNumber ?? '',
+                        ifscCode: profile?.ifscCode ?? '',
+                        upiId: profile?.upiId ?? '',
+                        title: 'Tax Invoice',
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ],
         ),
       ),
     );

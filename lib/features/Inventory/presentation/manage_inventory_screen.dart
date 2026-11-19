@@ -1895,15 +1895,43 @@ class _ManageInventoryScreenState extends State<ManageInventoryScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                item.name,
-                                style: JoynTypography.bodyLarge.copyWith(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w800,
-                                    color: Colors.black87,
-                                    letterSpacing: -0.2),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                              Row(
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      item.name,
+                                      style: JoynTypography.bodyLarge.copyWith(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w800,
+                                          color: Colors.black87,
+                                          letterSpacing: -0.2),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 5),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 5, vertical: 1.5),
+                                    decoration: BoxDecoration(
+                                      color: JoynColors.primary.withValues(alpha: 0.08),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(
+                                        color: JoynColors.primary.withValues(alpha: 0.20),
+                                        width: 0.8,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      item.displayItemCode,
+                                      style: JoynTypography.caption.copyWith(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w800,
+                                        color: JoynColors.primary,
+                                        letterSpacing: 0.3,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                               const SizedBox(height: 3),
                               if (item.category.isNotEmpty)

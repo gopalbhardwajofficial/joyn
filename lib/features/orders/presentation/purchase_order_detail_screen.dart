@@ -10,6 +10,8 @@ import '../data/sales_repository.dart';
 import 'add_purchase_order_screen.dart';
 // ⚠️ Adjust this import path to wherever InvoicePreviewScreen actually lives.
 import 'package:joyn/features/invoice/presentation/InvoicePreviewScreen.dart';
+import '../../business_profile/data/business_profile_repository.dart';
+import '../../../core/services/local_storage_service.dart';
 
 // ==================== Premium Helpers ====================
 class _P {
@@ -331,7 +333,24 @@ class _PurchaseOrderDetailScreenState extends State<PurchaseOrderDetailScreen> {
   }
 
   // ✅ CHANGED — plain text share ki jagah InvoicePreviewScreen
-  void _shareOrder() {
+  Future<void> _shareOrder() async {
+    final profile = await BusinessProfileRepository().getBusinessProfile();
+
+    final bizAddr = [
+      if (profile?.address.isNotEmpty == true) profile!.address,
+      if (profile?.city.isNotEmpty == true) profile!.city,
+      if (profile?.state.isNotEmpty == true) profile!.state,
+      if (profile?.pincode.isNotEmpty == true) profile!.pincode,
+    ].join(', ');
+
+    final resolvedBusinessName = (profile?.businessName.isNotEmpty == true && profile!.businessName != 'My Business')
+        ? profile!.businessName
+        : (LocalStorageService().businessName.isNotEmpty
+            ? LocalStorageService().businessName
+            : 'JOYN Enterprise');
+
+    if (!mounted) return;
+
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => InvoicePreviewScreen(
@@ -344,10 +363,17 @@ class _PurchaseOrderDetailScreenState extends State<PurchaseOrderDetailScreen> {
             items: _items,
             totalAmount: _totalAmount,
             receivedAmount: 0,
-            // TODO: Business Profile se pull karo
-            businessName: 'Your Business',
-            businessPhone: '',
-            businessEmail: '',
+            businessName: resolvedBusinessName,
+            businessPhone: profile?.phone1 ?? LocalStorageService().phoneNumber,
+            businessEmail: profile?.email ?? LocalStorageService().email,
+            businessAddress: bizAddr,
+            businessGstin: profile?.gstNumber ?? '',
+            logoPath: profile?.logoPath,
+            logoUrl: profile?.logoUrl,
+            bankName: profile?.bankName ?? '',
+            accountNumber: profile?.accountNumber ?? '',
+            ifscCode: profile?.ifscCode ?? '',
+            upiId: profile?.upiId ?? '',
             title: 'Purchase Order',
           ),
         ),

@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:joyn/core/theme/joyn_typography.dart';
 import 'package:joyn/core/theme/joyn_colors.dart';
-import 'package:joyn/core/widgets/Premium_widget.dart';
+import 'package:joyn/core/services/report_export_service.dart';
 
 class PartyItemRow {
   final String partyName;
@@ -223,14 +223,14 @@ class _PartyReportByItemScreenState extends State<PartyReportByItemScreen> {
             label: 'Pdf',
             icon: Icons.picture_as_pdf_rounded,
             color: const Color(0xFFDC2626),
-            onTap: () => _showSnackBar('Exporting PDF...'),
+            onTap: _exportRealPdf,
           ),
           const SizedBox(width: 6),
           _buildAppBarIconButton(
             label: 'xls',
             icon: Icons.grid_on_rounded,
             color: JoynColors.success,
-            onTap: () => _showSnackBar('Exporting Excel...'),
+            onTap: _exportRealExcel,
           ),
           const SizedBox(width: 16),
         ],
@@ -763,19 +763,61 @@ class _PartyReportByItemScreenState extends State<PartyReportByItemScreen> {
     );
   }
 
-  void _showSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          message,
-          style: JoynTypography.bodyMedium.copyWith(color: Colors.white),
-        ),
-        backgroundColor: JoynColors.primary,
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.all(16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        duration: const Duration(milliseconds: 1500),
-      ),
+  Future<void> _exportRealPdf() async {
+    final list = sortedRows;
+    final dateFmt = DateFormat('dd/MM/yyyy');
+    final periodStr = '${dateFmt.format(fromDate)} - ${dateFmt.format(toDate)}';
+
+    final tableHeaders = ['Party Name', 'Sale Qty', 'Purchase Qty'];
+    final tableRows = list.map((r) => [
+      r.partyName,
+      r.saleQty.toStringAsFixed(1),
+      r.purchaseQty.toStringAsFixed(1),
+    ]).toList();
+
+    final summary = {
+      'Selected Item': selectedItem,
+      'Total Parties': '${list.length}',
+      'Total Sale Qty': totalSaleQty.toStringAsFixed(1),
+      'Total Purchase Qty': totalPurchaseQty.toStringAsFixed(1),
+    };
+
+    await ReportExportService.showPdfOptionsSheet(
+      context: context,
+      title: 'Party Report by Item',
+      periodLabel: periodStr,
+      summaryStats: summary,
+      tableHeaders: tableHeaders,
+      tableRows: tableRows,
+    );
+  }
+
+  Future<void> _exportRealExcel() async {
+    final list = sortedRows;
+    final dateFmt = DateFormat('dd/MM/yyyy');
+    final periodStr = '${dateFmt.format(fromDate)} - ${dateFmt.format(toDate)}';
+
+    final tableHeaders = ['Party Name', 'Sale Qty', 'Purchase Qty'];
+    final tableRows = list.map((r) => [
+      r.partyName,
+      r.saleQty.toStringAsFixed(1),
+      r.purchaseQty.toStringAsFixed(1),
+    ]).toList();
+
+    final summary = {
+      'Selected Item': selectedItem,
+      'Total Parties': '${list.length}',
+      'Total Sale Qty': totalSaleQty.toStringAsFixed(1),
+      'Total Purchase Qty': totalPurchaseQty.toStringAsFixed(1),
+    };
+
+    await ReportExportService.showExcelOptionsSheet(
+      context: context,
+      title: 'Party Report by Item',
+      periodLabel: periodStr,
+      summaryStats: summary,
+      tableHeaders: tableHeaders,
+      tableRows: tableRows,
     );
   }
 }

@@ -7,6 +7,7 @@ import 'package:sqflite/sqflite.dart';
 class DatabaseHelper {
   static final DatabaseHelper _instance = DatabaseHelper._internal();
   factory DatabaseHelper() => _instance;
+  static DatabaseHelper get instance => _instance;
   DatabaseHelper._internal();
 
   static Database? _database;
@@ -23,7 +24,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 5,
+      version: 7,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onDowngrade: onDatabaseDowngradeDelete,
@@ -88,6 +89,17 @@ class DatabaseHelper {
         showGstOnCard INTEGER DEFAULT 0,
         showBusinessTypeOnCard INTEGER DEFAULT 0,
         showCategoryOnCard INTEGER DEFAULT 0,
+        bankName TEXT DEFAULT '',
+        accountNumber TEXT DEFAULT '',
+        ifscCode TEXT DEFAULT '',
+        branchName TEXT DEFAULT '',
+        upiId TEXT DEFAULT '',
+        invoiceTheme TEXT DEFAULT 'classic_blue',
+        invoiceColorHex TEXT DEFAULT '#4338CA',
+        invoiceTerms TEXT DEFAULT '',
+        showUpiQr INTEGER DEFAULT 1,
+        logoUrl TEXT,
+        signatureUrl TEXT,
         updatedAt TEXT
       )
     ''');
@@ -109,6 +121,8 @@ class DatabaseHelper {
         priorityLevel TEXT DEFAULT 'medium',
         photoPath TEXT DEFAULT '',
         avatarIndex INTEGER,
+        partyNumber INTEGER,
+        partyCode TEXT,
         createdAt TEXT
       )
     ''');
@@ -135,6 +149,8 @@ class DatabaseHelper {
         taxRateLabel TEXT DEFAULT 'None',
         taxRatePercent REAL DEFAULT 0,
         stock INTEGER DEFAULT 0,
+        itemNumber INTEGER,
+        itemCode TEXT,
         createdAt TEXT
       )
     ''');
@@ -291,6 +307,27 @@ class DatabaseHelper {
 
       await _insertDefaultCategories(db);
     }
+
+    if (oldVersion < 6) {
+      await _tryAlter(db, "ALTER TABLE business_profile ADD COLUMN bankName TEXT DEFAULT ''");
+      await _tryAlter(db, "ALTER TABLE business_profile ADD COLUMN accountNumber TEXT DEFAULT ''");
+      await _tryAlter(db, "ALTER TABLE business_profile ADD COLUMN ifscCode TEXT DEFAULT ''");
+      await _tryAlter(db, "ALTER TABLE business_profile ADD COLUMN branchName TEXT DEFAULT ''");
+      await _tryAlter(db, "ALTER TABLE business_profile ADD COLUMN upiId TEXT DEFAULT ''");
+      await _tryAlter(db, "ALTER TABLE business_profile ADD COLUMN invoiceTheme TEXT DEFAULT 'classic_blue'");
+      await _tryAlter(db, "ALTER TABLE business_profile ADD COLUMN invoiceColorHex TEXT DEFAULT '#4338CA'");
+      await _tryAlter(db, "ALTER TABLE business_profile ADD COLUMN invoiceTerms TEXT DEFAULT ''");
+      await _tryAlter(db, "ALTER TABLE business_profile ADD COLUMN showUpiQr INTEGER DEFAULT 1");
+      await _tryAlter(db, "ALTER TABLE business_profile ADD COLUMN logoUrl TEXT");
+      await _tryAlter(db, "ALTER TABLE business_profile ADD COLUMN signatureUrl TEXT");
+    }
+
+    if (oldVersion < 7) {
+      await _tryAlter(db, "ALTER TABLE parties ADD COLUMN partyNumber INTEGER");
+      await _tryAlter(db, "ALTER TABLE parties ADD COLUMN partyCode TEXT");
+      await _tryAlter(db, "ALTER TABLE items ADD COLUMN itemNumber INTEGER");
+      await _tryAlter(db, "ALTER TABLE items ADD COLUMN itemCode TEXT");
+    }
   }
 
   Future<void> _tryAlter(Database db, String sql) async {
@@ -396,6 +433,20 @@ class DatabaseHelper {
     );
 
     debugPrint('New database created');
+  }
+
+  Future<void> clearUserData() async {
+    try {
+      final db = await database;
+      await db.delete('business_profile');
+      await db.delete('items');
+      await db.delete('parties');
+      await db.delete('sales_orders');
+      await db.delete('purchase_orders');
+      await db.delete('payments');
+    } catch (e) {
+      debugPrint('Error clearing local SQLite user data: $e');
+    }
   }
 
   Future<void> close() async {

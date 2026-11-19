@@ -23,6 +23,19 @@ class BusinessProfileModel {
   final bool showCategoryOnCard;
   final DateTime updatedAt;
 
+  // Phase 8: Branding, Bank Details & Invoice Customization
+  final String bankName;
+  final String accountNumber;
+  final String ifscCode;
+  final String branchName;
+  final String upiId;
+  final String invoiceTheme;
+  final String invoiceColorHex;
+  final String invoiceTerms;
+  final bool showUpiQr;
+  final String? logoUrl;
+  final String? signatureUrl;
+
   BusinessProfileModel({
     this.id,
     required this.businessName,
@@ -47,6 +60,17 @@ class BusinessProfileModel {
     required this.showBusinessTypeOnCard,
     required this.showCategoryOnCard,
     required this.updatedAt,
+    this.bankName = '',
+    this.accountNumber = '',
+    this.ifscCode = '',
+    this.branchName = '',
+    this.upiId = '',
+    this.invoiceTheme = 'classic_blue',
+    this.invoiceColorHex = '#4338CA',
+    this.invoiceTerms = '',
+    this.showUpiQr = true,
+    this.logoUrl,
+    this.signatureUrl,
   });
 
   Map<String, dynamic> toDb() {
@@ -74,6 +98,17 @@ class BusinessProfileModel {
       'showBusinessTypeOnCard': showBusinessTypeOnCard ? 1 : 0,
       'showCategoryOnCard': showCategoryOnCard ? 1 : 0,
       'updatedAt': updatedAt.toIso8601String(),
+      'bankName': bankName,
+      'accountNumber': accountNumber,
+      'ifscCode': ifscCode,
+      'branchName': branchName,
+      'upiId': upiId,
+      'invoiceTheme': invoiceTheme,
+      'invoiceColorHex': invoiceColorHex,
+      'invoiceTerms': invoiceTerms,
+      'showUpiQr': showUpiQr ? 1 : 0,
+      'logoUrl': logoUrl,
+      'signatureUrl': signatureUrl,
     };
   }
 
@@ -101,7 +136,22 @@ class BusinessProfileModel {
       showGstOnCard: (map['showGstOnCard'] ?? 0) == 1,
       showBusinessTypeOnCard: (map['showBusinessTypeOnCard'] ?? 0) == 1,
       showCategoryOnCard: (map['showCategoryOnCard'] ?? 0) == 1,
-      updatedAt: DateTime.parse(map['updatedAt'] ?? DateTime.now().toIso8601String()),
+      updatedAt: DateTime.tryParse(map['updatedAt']?.toString() ?? '') ?? DateTime.now(),
+      bankName: map['bankName'] ?? '',
+      accountNumber: map['accountNumber'] ?? '',
+      ifscCode: map['ifscCode'] ?? '',
+      branchName: map['branchName'] ?? '',
+      upiId: map['upiId'] ?? '',
+      invoiceTheme: map['invoiceTheme'] ?? 'classic_blue',
+      invoiceColorHex: map['invoiceColorHex'] ?? '#4338CA',
+      invoiceTerms: map['invoiceTerms'] ?? '',
+      showUpiQr: map['showUpiQr'] == null ? true : (map['showUpiQr'] == 1 || map['showUpiQr'] == true),
+      logoUrl: map['logoUrl'],
+      signatureUrl: map['signatureUrl'],
     );
   }
+
+  Map<String, dynamic> toJson() => toDb();
+
+  factory BusinessProfileModel.fromJson(Map<String, dynamic> json) => BusinessProfileModel.fromDb(json);
 }

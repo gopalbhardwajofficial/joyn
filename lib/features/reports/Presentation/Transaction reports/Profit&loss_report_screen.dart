@@ -3,7 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:joyn/core/theme/joyn_typography.dart';
 import 'package:joyn/core/theme/joyn_colors.dart';
-import 'package:joyn/core/widgets/Premium_widget.dart';
+import 'package:joyn/core/services/api_service.dart';
+import 'package:joyn/core/services/report_export_service.dart';
 
 enum RowType { sectionHeader, item, highlight }
 
@@ -34,47 +35,82 @@ class ProfitAndLossReportScreen extends StatefulWidget {
 
 class _ProfitAndLossReportScreenState extends State<ProfitAndLossReportScreen> {
   String selectedPeriod = 'This Month';
-  DateTime fromDate = DateTime(2026, 9, 1);
-  DateTime toDate = DateTime(2026, 9, 30);
-  bool _isLoading = false;
+  late DateTime fromDate;
+  late DateTime toDate;
+  bool _isLoading = true;
 
-  double grossProfit = 1100.00;
-  double netProfit = 1100.00;
+  double grossProfit = 0.00;
+  double netProfit = 0.00;
+  double grossSales = 0.00;
+  double grossMarginPct = 0.0;
+  double netMarginPct = 0.0;
+  double cogs = 0.00;
+  double operatingExpenses = 0.00;
 
-  late final List<PnlRow> rows = [
-    PnlRow.item('Sale (+)', 1100.00, isPositive: true),
-    PnlRow.item('Sale FA (+)', 0.00, isPositive: true),
-    PnlRow.item('Cr. Note/Sale Return (-)', 0.00, isPositive: false),
-    PnlRow.item('Purchase (-)', 0.00, isPositive: false),
-    PnlRow.item('Purchase FA (-)', 0.00, isPositive: false),
-    PnlRow.item('Dr. Note/Purchase Return (+)', 0.00, isPositive: true),
-    PnlRow.item('Payment Out Discount (+)', 0.00, isPositive: true),
-    PnlRow.sectionHeader('Stocks'),
-    PnlRow.item('Opening Stock (-)', 0.00, isPositive: false),
-    PnlRow.item('Closing Stock (+)', 0.00, isPositive: true),
-    PnlRow.item('Opening FA Stock (-)', 0.00, isPositive: false),
-    PnlRow.item('Closing FA Stock (+)', 0.00, isPositive: true),
-    PnlRow.sectionHeader('Direct Expenses (-)'),
-    PnlRow.item('Other Direct Expense', 0.00, isPositive: false),
-    PnlRow.item('Payment In Discount', 0.00, isPositive: false),
-    PnlRow.sectionHeader('Tax Payable (-)'),
-    PnlRow.item('GST Payable', 0.00, isPositive: false),
-    PnlRow.item('TCS Payable', 0.00, isPositive: false),
-    PnlRow.item('TDS Payable', 0.00, isPositive: false),
-    PnlRow.sectionHeader('Tax Receivable (+)'),
-    PnlRow.item('GST Receivable', 0.00, isPositive: true),
-    PnlRow.item('TCS Receivable', 0.00, isPositive: true),
-    PnlRow.item('TDS Receivable', 0.00, isPositive: true),
-    PnlRow.highlight('Gross Profit', 1100.00),
-    PnlRow.sectionHeader('Other Income (+)'),
-    PnlRow.item('Other Income', 0.00, isPositive: true),
-    PnlRow.sectionHeader('Indirect Expenses (-)'),
-    PnlRow.item('Other Expense', 0.00, isPositive: false),
-    PnlRow.item('Loan Interest Expense', 0.00, isPositive: false),
-    PnlRow.item('Loan Processing Fee Expense', 0.00, isPositive: false),
-    PnlRow.item('Charges on Loan Expense', 0.00, isPositive: false),
-    PnlRow.highlight('Net Profit', 1100.00),
-  ];
+  List<PnlRow> rows = [];
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    fromDate = DateTime(now.year, now.month, 1);
+    toDate = DateTime(now.year, now.month + 1, 0);
+    _fetchProfitAndLoss();
+  }
+
+  Future<void> _fetchProfitAndLoss() async {
+    setState(() => _isLoading = true);
+    final startStr = DateFormat('yyyy-MM-dd').format(fromDate);
+    final endStr = DateFormat('yyyy-MM-dd').format(toDate);
+
+    try {
+      final res = await ApiService.fetchProfitAndLoss(startDate: startStr, endDate: endStr);
+      if (res['success'] == true) {
+        final gp = (res['grossProfit'] as num?)?.toDouble() ?? 0.0;
+        final np = (res['netProfit'] as num?)?.toDouble() ?? 0.0;
+        final gs = (res['grossSales'] as num?)?.toDouble() ?? 0.0;
+        final gm = (res['grossMarginPct'] as num?)?.toDouble() ?? 0.0;
+        final nm = (res['netMarginPct'] as num?)?.toDouble() ?? 0.0;
+        final cg = (res['cogs'] as num?)?.toDouble() ?? 0.0;
+        final opex = (res['indirectExpenses'] as num?)?.toDouble() ?? 0.0;
+        final rawRows = res['rows'] as List? ?? [];
+
+        final mappedRows = <PnlRow>[];
+        for (final r in rawRows) {
+          final type = r['type']?.toString();
+          final label = r['label']?.toString() ?? '';
+          final amount = (r['amount'] as num?)?.toDouble();
+          final isPos = r['isPositive'] == true;
+
+          if (type == 'sectionHeader') {
+            mappedRows.add(PnlRow.sectionHeader(label));
+          } else if (type == 'highlight') {
+            mappedRows.add(PnlRow.highlight(label, amount));
+          } else {
+            mappedRows.add(PnlRow.item(label, amount, isPositive: isPos));
+          }
+        }
+
+        if (mounted) {
+          setState(() {
+            grossProfit = gp;
+            netProfit = np;
+            grossSales = gs;
+            grossMarginPct = gm;
+            netMarginPct = nm;
+            cogs = cg;
+            operatingExpenses = opex;
+            rows = mappedRows;
+            _isLoading = false;
+          });
+        }
+      } else {
+        if (mounted) setState(() => _isLoading = false);
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
 
   Future<void> _pickDateRange() async {
     HapticFeedback.lightImpact();
@@ -89,7 +125,7 @@ class _ProfitAndLossReportScreenState extends State<ProfitAndLossReportScreen> {
             primary: JoynColors.primary,
             surface: JoynColors.iconBackground,
           ),
-          dialogBackgroundColor: JoynColors.background,
+          dialogTheme: const DialogThemeData(backgroundColor: JoynColors.background),
         ),
         child: child!,
       ),
@@ -99,10 +135,8 @@ class _ProfitAndLossReportScreenState extends State<ProfitAndLossReportScreen> {
         fromDate = picked.start;
         toDate = picked.end;
         selectedPeriod = 'Custom';
-        _isLoading = true;
       });
-      await Future.delayed(const Duration(milliseconds: 500));
-      if (mounted) setState(() => _isLoading = false);
+      _fetchProfitAndLoss();
     }
   }
 
@@ -157,7 +191,30 @@ class _ProfitAndLossReportScreenState extends State<ProfitAndLossReportScreen> {
         ),
       ),
     );
-    if (result != null) setState(() => selectedPeriod = result);
+    if (result != null) {
+      final now = DateTime.now();
+      setState(() {
+        selectedPeriod = result;
+        if (result == 'Today') {
+          fromDate = DateTime(now.year, now.month, now.day);
+          toDate = DateTime(now.year, now.month, now.day, 23, 59, 59);
+        } else if (result == 'This Week') {
+          fromDate = now.subtract(Duration(days: now.weekday - 1));
+          toDate = now;
+        } else if (result == 'This Month') {
+          fromDate = DateTime(now.year, now.month, 1);
+          toDate = DateTime(now.year, now.month + 1, 0);
+        } else if (result == 'This Year') {
+          fromDate = DateTime(now.year, 1, 1);
+          toDate = DateTime(now.year, 12, 31);
+        }
+      });
+      if (result == 'Custom') {
+        _pickDateRange();
+      } else {
+        _fetchProfitAndLoss();
+      }
+    }
   }
 
   @override
@@ -189,14 +246,14 @@ class _ProfitAndLossReportScreenState extends State<ProfitAndLossReportScreen> {
             label: 'Pdf',
             icon: Icons.picture_as_pdf_rounded,
             color: const Color(0xFFDC2626),
-            onTap: () => _showSnackBar('Exporting PDF...'),
+            onTap: _exportRealPdf,
           ),
           const SizedBox(width: 6),
           _buildAppBarIconButton(
             label: 'xls',
             icon: Icons.grid_on_rounded,
             color: JoynColors.success,
-            onTap: () => _showSnackBar('Exporting Excel...'),
+            onTap: _exportRealExcel,
           ),
           const SizedBox(width: 16),
         ],
@@ -324,27 +381,74 @@ class _ProfitAndLossReportScreenState extends State<ProfitAndLossReportScreen> {
           ),
         ],
       ),
-      child: Row(
+      child: Column(
         children: [
-          Expanded(
-            child: _buildSummaryItem(
-              icon: Icons.stacked_line_chart_rounded,
-              label: 'Gross Profit',
-              value: '₹ ${currency.format(grossProfit)}',
-              valueColor: const Color(0xFF4ADE80),
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: _buildSummaryItem(
+                  icon: Icons.stacked_line_chart_rounded,
+                  label: 'Gross Profit ($grossMarginPct%)',
+                  value: '₹ ${currency.format(grossProfit)}',
+                  valueColor: grossProfit >= 0 ? const Color(0xFF4ADE80) : const Color(0xFFF87171),
+                ),
+              ),
+              Container(width: 1, height: 44, color: Colors.white24),
+              Expanded(
+                child: _buildSummaryItem(
+                  icon: Icons.savings_rounded,
+                  label: 'Net Profit ($netMarginPct%)',
+                  value: '₹ ${currency.format(netProfit)}',
+                  valueColor: netProfit >= 0 ? const Color(0xFF4ADE80) : const Color(0xFFF87171),
+                ),
+              ),
+            ],
           ),
-          Container(width: 1, height: 40, color: Colors.white24),
-          Expanded(
-            child: _buildSummaryItem(
-              icon: Icons.savings_rounded,
-              label: 'Net Profit',
-              value: '₹ ${currency.format(netProfit)}',
-              valueColor: const Color(0xFF4ADE80),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildSubSummaryStat('Revenue', '₹${currency.format(grossSales)}'),
+                Container(width: 1, height: 18, color: Colors.white24),
+                _buildSubSummaryStat('COGS', '₹${currency.format(cogs)}'),
+                Container(width: 1, height: 18, color: Colors.white24),
+                _buildSubSummaryStat('OpEx', '₹${currency.format(operatingExpenses)}'),
+              ],
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildSubSummaryStat(String label, String value) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          label,
+          style: JoynTypography.caption.copyWith(
+            color: Colors.white70,
+            fontSize: 10.5,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 1),
+        Text(
+          value,
+          style: JoynTypography.caption.copyWith(
+            color: Colors.white,
+            fontSize: 11.5,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ],
     );
   }
 
@@ -623,19 +727,68 @@ class _ProfitAndLossReportScreenState extends State<ProfitAndLossReportScreen> {
     );
   }
 
-  void _showSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          message,
-          style: JoynTypography.bodyMedium.copyWith(color: Colors.white),
-        ),
-        backgroundColor: JoynColors.primary,
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.all(16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        duration: const Duration(milliseconds: 1500),
-      ),
+  Future<void> _exportRealPdf() async {
+    final dateFmt = DateFormat('dd/MM/yyyy');
+    final periodStr = '${dateFmt.format(fromDate)} - ${dateFmt.format(toDate)}';
+    final currency = NumberFormat('#,##,##0.00', 'en_IN');
+
+    final tableHeaders = ['Account Head / Particulars', 'Type', 'Amount'];
+    final tableRows = <List<String>>[];
+
+    for (final r in rows) {
+      if (r.type == RowType.sectionHeader) {
+        tableRows.add(['[ ${r.label} ]', 'Section', '']);
+      } else if (r.type == RowType.highlight) {
+        tableRows.add([r.label, 'Total', r.amount != null ? '₹ ${currency.format(r.amount)}' : '']);
+      } else {
+        tableRows.add([r.label, 'Particulars', r.amount != null ? '₹ ${currency.format(r.amount)}' : '']);
+      }
+    }
+
+    final summary = {
+      'Gross Profit': '₹ ${currency.format(grossProfit)}',
+      'Net Profit': '₹ ${currency.format(netProfit)}',
+    };
+
+    await ReportExportService.showPdfOptionsSheet(
+      context: context,
+      title: 'Profit & Loss Report',
+      periodLabel: periodStr,
+      summaryStats: summary,
+      tableHeaders: tableHeaders,
+      tableRows: tableRows,
+    );
+  }
+
+  Future<void> _exportRealExcel() async {
+    final dateFmt = DateFormat('dd/MM/yyyy');
+    final periodStr = '${dateFmt.format(fromDate)} - ${dateFmt.format(toDate)}';
+
+    final tableHeaders = ['Account Head / Particulars', 'Type', 'Amount (INR)'];
+    final tableRows = <List<String>>[];
+
+    for (final r in rows) {
+      if (r.type == RowType.sectionHeader) {
+        tableRows.add([r.label, 'Section', '']);
+      } else if (r.type == RowType.highlight) {
+        tableRows.add([r.label, 'Total', r.amount != null ? r.amount!.toStringAsFixed(2) : '']);
+      } else {
+        tableRows.add([r.label, 'Particulars', r.amount != null ? r.amount!.toStringAsFixed(2) : '']);
+      }
+    }
+
+    final summary = {
+      'Gross Profit': '₹ ${grossProfit.toStringAsFixed(2)}',
+      'Net Profit': '₹ ${netProfit.toStringAsFixed(2)}',
+    };
+
+    await ReportExportService.showExcelOptionsSheet(
+      context: context,
+      title: 'Profit & Loss Report',
+      periodLabel: periodStr,
+      summaryStats: summary,
+      tableHeaders: tableHeaders,
+      tableRows: tableRows,
     );
   }
 }

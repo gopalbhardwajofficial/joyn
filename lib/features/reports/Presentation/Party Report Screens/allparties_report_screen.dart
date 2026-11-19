@@ -3,7 +3,8 @@ import 'package:intl/intl.dart';
 import 'package:joyn/core/theme/joyn_typography.dart';
 import 'package:joyn/core/theme/joyn_colors.dart';
 import 'package:joyn/core/widgets/Premium_widget.dart';
-
+import 'package:joyn/core/services/api_service.dart';
+import 'package:joyn/core/services/report_export_service.dart';
 
 class PartyReportRow {
   final String name;
@@ -22,16 +23,50 @@ class AllPartyReportScreen extends StatefulWidget {
 
 class _AllPartyReportScreenState extends State<AllPartyReportScreen> {
   bool dateFilterEnabled = false;
-  DateTime selectedDate = DateTime(2026, 9, 7);
+  DateTime selectedDate = DateTime.now();
+  bool _isLoading = false;
 
   String showFilter = 'All parties';
   String sortBy = 'Name';
   bool showZeroBalanceParty = true;
 
-  final List<PartyReportRow> allParties = [
-    PartyReportRow(name: 'gill', creditLimit: null, balance: 100.00),
-    PartyReportRow(name: 'Gopal', creditLimit: null, balance: 500.00),
-  ];
+  List<PartyReportRow> allParties = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchAllPartiesReport();
+  }
+
+  Future<void> _fetchAllPartiesReport() async {
+    setState(() => _isLoading = true);
+    final asOfStr = dateFilterEnabled ? DateFormat('yyyy-MM-dd').format(selectedDate) : null;
+
+    try {
+      final res = await ApiService.fetchAllPartiesReport(asOfDate: asOfStr);
+      if (res['success'] == true) {
+        final rawList = res['parties'] as List? ?? [];
+        final mapped = <PartyReportRow>[];
+        for (final p in rawList) {
+          mapped.add(PartyReportRow(
+            name: p['name']?.toString() ?? 'Party #${p['id']}',
+            creditLimit: (p['creditLimit'] as num?)?.toDouble(),
+            balance: (p['balance'] as num?)?.toDouble() ?? 0.0,
+          ));
+        }
+        if (mounted) {
+          setState(() {
+            allParties = mapped;
+            _isLoading = false;
+          });
+        }
+      } else {
+        if (mounted) setState(() => _isLoading = false);
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
 
   List<PartyReportRow> get filteredParties {
     var list = allParties.where((p) {
@@ -48,6 +83,77 @@ class _AllPartyReportScreenState extends State<AllPartyReportScreen> {
     return list;
   }
 
+  Future<void> _exportRealPdf() async {
+    final list = filteredParties;
+    final currency = NumberFormat('#,##0.00', 'en_IN');
+    final asOfStr = dateFilterEnabled ? DateFormat('dd/MM/yyyy').format(selectedDate) : 'All Time';
+
+    final tableHeaders = ['Party Name', 'Credit Limit', 'Balance', 'Type'];
+    final tableRows = list.map((p) {
+      final isReceivable = p.balance >= 0;
+      final typeStr = p.balance == 0 ? 'Settled' : (isReceivable ? 'Receivable (To Collect)' : 'Payable (To Pay)');
+      return [
+        p.name,
+        p.creditLimit != null ? '₹ ${currency.format(p.creditLimit)}' : '-',
+        '₹ ${currency.format(p.balance.abs())}',
+        typeStr,
+      ];
+    }).toList();
+
+    final totalReceivables = list.where((p) => p.balance > 0).fold(0.0, (s, p) => s + p.balance);
+    final totalPayables = list.where((p) => p.balance < 0).fold(0.0, (s, p) => s + p.balance.abs());
+
+    final summary = {
+      'Total Parties': '${list.length}',
+      'Total Receivables': '₹ ${currency.format(totalReceivables)}',
+      'Total Payables': '₹ ${currency.format(totalPayables)}',
+    };
+
+    await ReportExportService.showPdfOptionsSheet(
+      context: context,
+      title: 'All Parties Report',
+      periodLabel: 'As of: $asOfStr',
+      summaryStats: summary,
+      tableHeaders: tableHeaders,
+      tableRows: tableRows,
+    );
+  }
+
+  Future<void> _exportRealExcel() async {
+    final list = filteredParties;
+    final asOfStr = dateFilterEnabled ? DateFormat('dd/MM/yyyy').format(selectedDate) : 'All Time';
+
+    final tableHeaders = ['Party Name', 'Credit Limit (INR)', 'Balance (INR)', 'Type'];
+    final tableRows = list.map((p) {
+      final isReceivable = p.balance >= 0;
+      final typeStr = p.balance == 0 ? 'Settled' : (isReceivable ? 'Receivable' : 'Payable');
+      return [
+        p.name,
+        p.creditLimit?.toStringAsFixed(2) ?? '',
+        p.balance.toStringAsFixed(2),
+        typeStr,
+      ];
+    }).toList();
+
+    final totalReceivables = list.where((p) => p.balance > 0).fold(0.0, (s, p) => s + p.balance);
+    final totalPayables = list.where((p) => p.balance < 0).fold(0.0, (s, p) => s + p.balance.abs());
+
+    final summary = {
+      'Total Parties': '${list.length}',
+      'Total Receivables': totalReceivables.toStringAsFixed(2),
+      'Total Payables': totalPayables.toStringAsFixed(2),
+    };
+
+    await ReportExportService.showExcelOptionsSheet(
+      context: context,
+      title: 'All Parties Report',
+      periodLabel: 'As of: $asOfStr',
+      summaryStats: summary,
+      tableHeaders: tableHeaders,
+      tableRows: tableRows,
+    );
+  }
+
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
       context: context,
@@ -55,7 +161,12 @@ class _AllPartyReportScreenState extends State<AllPartyReportScreen> {
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
     );
-    if (picked != null) setState(() => selectedDate = picked);
+    if (picked != null) {
+      setState(() => selectedDate = picked);
+      if (dateFilterEnabled) {
+        _fetchAllPartiesReport();
+      }
+    }
   }
 
   Future<void> _pickOption({
@@ -107,7 +218,7 @@ class _AllPartyReportScreenState extends State<AllPartyReportScreen> {
         titleSpacing: 20,
         title: Text('Party Report', style: JoynTypography.screenTitle),
         actions: [
-          ExportActions(onPdf: () {}, onXls: () {}),
+          ExportActions(onPdf: _exportRealPdf, onXls: _exportRealExcel),
           const SizedBox(width: 16),
         ],
       ),
@@ -123,7 +234,10 @@ class _AllPartyReportScreenState extends State<AllPartyReportScreen> {
                     value: dateFilterEnabled,
                     activeColor: JoynColors.primary,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                    onChanged: (v) => setState(() => dateFilterEnabled = v ?? false),
+                    onChanged: (v) {
+                      setState(() => dateFilterEnabled = v ?? false);
+                      _fetchAllPartiesReport();
+                    },
                   ),
                   Text('Date Filter', style: JoynTypography.bodyMedium.copyWith(fontWeight: FontWeight.w600)),
                   const Spacer(),
@@ -205,13 +319,17 @@ class _AllPartyReportScreenState extends State<AllPartyReportScreen> {
             Expanded(flex: 2, child: Text('Balance', textAlign: TextAlign.right, style: JoynTypography.caption)),
           ]),
           Expanded(
-            child: filteredParties.isEmpty
-                ? const PremiumEmptyState(
-              icon: Icons.groups_rounded,
-              title: 'No parties found',
-              subtitle: 'Try a different Show or balance filter.',
-            )
-                : ListView.separated(
+            child: _isLoading
+                ? const Center(
+                    child: CircularProgressIndicator(color: JoynColors.primary),
+                  )
+                : filteredParties.isEmpty
+                    ? const PremiumEmptyState(
+                        icon: Icons.groups_rounded,
+                        title: 'No parties found',
+                        subtitle: 'Try a different Show or balance filter.',
+                      )
+                    : ListView.separated(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
               itemCount: filteredParties.length,
               separatorBuilder: (_, __) => const SizedBox(height: 10),

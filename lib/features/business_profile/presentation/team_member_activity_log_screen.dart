@@ -5,6 +5,7 @@ import '../../../core/theme/joyn_colors.dart';
 import '../../../core/theme/joyn_typography.dart';
 import '../models/activity_log_model.dart';
 import '../../team_management/models/team_member_model.dart';
+import '../../../core/services/api_service.dart';
 
 // =====================================================================
 // PREMIUM DESIGN SYSTEM — Diamond Edition
@@ -199,41 +200,92 @@ class TeamMemberActivityLogScreen extends StatefulWidget {
 
 class _TeamMemberActivityLogScreenState
     extends State<TeamMemberActivityLogScreen> {
-  ActivityTimePeriod _selectedPeriod = ActivityTimePeriod.day1;
+  ActivityTimePeriod _selectedPeriod = ActivityTimePeriod.month1;
   DateTimeRange? _customRange;
+  List<ActivityLogEntry> _cloudEntries = [];
+  bool _isLoading = false;
+  String _selectedCategory = 'All';
 
-  List<ActivityLogEntry> get _dummyEntries => [
-    ActivityLogEntry(
-      id: '1',
-      type: ActivityType.itemPurchased,
-      title: 'Item Purchased',
-      subtitle: 'Purchase Order #PO-1234',
-      amount: 5000,
-      timestamp: DateTime.now().subtract(const Duration(hours: 2)),
-    ),
-    ActivityLogEntry(
-      id: '2',
-      type: ActivityType.itemSold,
-      title: 'Item Sold',
-      subtitle: 'Sale Invoice #2',
-      amount: 10020,
-      timestamp: DateTime.now().subtract(const Duration(hours: 5)),
-    ),
-    ActivityLogEntry(
-      id: '3',
-      type: ActivityType.itemAddedModified,
-      title: 'Item Added / Modified',
-      subtitle: 'Sugar 1kg — stock updated',
-      timestamp: DateTime.now().subtract(const Duration(days: 1)),
-    ),
-    ActivityLogEntry(
-      id: '4',
-      type: ActivityType.custAddedModified,
-      title: 'Customer Added / Modified',
-      subtitle: 'Ramesh Traders — details updated',
-      timestamp: DateTime.now().subtract(const Duration(days: 2)),
-    ),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _fetchActivityLogs();
+  }
+
+  Future<void> _fetchActivityLogs() async {
+    setState(() => _isLoading = true);
+    String periodKey = '1month';
+    switch (_selectedPeriod) {
+      case ActivityTimePeriod.day1:
+        periodKey = '1day';
+        break;
+      case ActivityTimePeriod.week1:
+        periodKey = '1week';
+        break;
+      case ActivityTimePeriod.month1:
+        periodKey = '1month';
+        break;
+      case ActivityTimePeriod.month3:
+        periodKey = '3months';
+        break;
+      case ActivityTimePeriod.month6:
+        periodKey = '6months';
+        break;
+      case ActivityTimePeriod.custom:
+        periodKey = 'custom';
+        break;
+    }
+
+    try {
+      final res = await ApiService.fetchMemberActivityLogs(
+        widget.member.id,
+        period: periodKey,
+      );
+      if (res['success'] == true && res['logs'] is List) {
+        final filteredList = (res['logs'] as List).where((l) {
+          final title = (l['title'] ?? '').toString().toLowerCase();
+          final subtitle = (l['subtitle'] ?? '').toString().toLowerCase();
+          if (title.contains('team member joined') || title.contains('team member updated')) return false;
+          if (subtitle.contains('assigned as')) return false;
+          return true;
+        }).toList();
+
+        setState(() {
+          _cloudEntries = filteredList.map((l) {
+            ActivityType actType = ActivityType.itemSold;
+            final typeStr = l['type']?.toString();
+            if (typeStr == 'itemPurchased') {
+              actType = ActivityType.itemPurchased;
+            } else if (typeStr == 'itemAddedModified') {
+              actType = ActivityType.itemAddedModified;
+            } else if (typeStr == 'custAddedModified') {
+              actType = ActivityType.custAddedModified;
+            }
+
+            return ActivityLogEntry(
+              id: l['id']?.toString() ?? '',
+              type: actType,
+              title: l['title']?.toString() ?? 'Activity',
+              subtitle: l['subtitle']?.toString() ?? '',
+              amount: (l['amount'] as num?)?.toDouble(),
+              timestamp: DateTime.tryParse(l['timestamp']?.toString() ?? '') ?? DateTime.now(),
+            );
+          }).toList();
+        });
+      } else {
+        setState(() {
+          _cloudEntries = [];
+        });
+      }
+    } catch (e) {
+      debugPrint('Error fetching activity logs: $e');
+      setState(() {
+        _cloudEntries = [];
+      });
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
 
   Future<void> _selectPeriod() async {
     final result = await showModalBottomSheet<ActivityTimePeriod>(
@@ -354,6 +406,7 @@ class _TeamMemberActivityLogScreenState
 
     if (result != null) {
       setState(() => _selectedPeriod = result);
+      _fetchActivityLogs();
     }
   }
 
@@ -369,6 +422,7 @@ class _TeamMemberActivityLogScreenState
         _customRange = picked;
         _selectedPeriod = ActivityTimePeriod.custom;
       });
+      _fetchActivityLogs();
     }
   }
 
@@ -409,13 +463,20 @@ class _TeamMemberActivityLogScreenState
 
   @override
   Widget build(BuildContext context) {
-    final entries = _dummyEntries;
+    final entries = _cloudEntries;
     final totalPurchased = entries
         .where((e) => e.type == ActivityType.itemPurchased)
         .fold<double>(0, (sum, e) => sum + (e.amount ?? 0));
     final totalSold = entries
         .where((e) => e.type == ActivityType.itemSold)
         .fold<double>(0, (sum, e) => sum + (e.amount ?? 0));
+
+    final displayEntries = entries.where((e) {
+      if (_selectedCategory == 'Sales') return e.type == ActivityType.itemSold;
+      if (_selectedCategory == 'Purchases') return e.type == ActivityType.itemPurchased;
+      if (_selectedCategory == 'Other') return e.type != ActivityType.itemSold && e.type != ActivityType.itemPurchased;
+      return true;
+    }).toList();
 
     return Scaffold(
       backgroundColor: JoynColors.background,
@@ -448,6 +509,16 @@ class _TeamMemberActivityLogScreenState
           style: JoynTypography.titleMedium.copyWith(
               fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: -0.3),
         ),
+        bottom: _isLoading
+            ? const PreferredSize(
+                preferredSize: Size.fromHeight(2),
+                child: LinearProgressIndicator(
+                  minHeight: 2,
+                  color: JoynColors.primary,
+                  backgroundColor: Colors.transparent,
+                ),
+              )
+            : null,
       ),
       body: SafeArea(
         top: false,
@@ -493,17 +564,71 @@ class _TeamMemberActivityLogScreenState
 
             _StaggeredItem(
                 index: 5,
-                child: _buildSectionLabel('Items / Customer / Order')),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _buildSectionLabel('Items / Customer / Order'),
+                    Text(
+                      '${displayEntries.length} ${displayEntries.length == 1 ? "Record" : "Records"}',
+                      style: JoynTypography.caption.copyWith(
+                        color: JoynColors.secondaryText,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                )),
+            const SizedBox(height: 10),
+
+            // Category Filter Chips
+            _StaggeredItem(
+              index: 6,
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(),
+                child: Row(
+                  children: ['All', 'Sales', 'Purchases', 'Other'].map((cat) {
+                    final isSel = _selectedCategory == cat;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ChoiceChip(
+                        label: Text(
+                          cat,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: isSel ? FontWeight.w800 : FontWeight.w600,
+                            color: isSel ? Colors.white : Colors.black87,
+                          ),
+                        ),
+                        selected: isSel,
+                        selectedColor: JoynColors.primary,
+                        backgroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          side: BorderSide(
+                            color: isSel ? JoynColors.primary : JoynColors.border,
+                          ),
+                        ),
+                        onSelected: (selected) {
+                          if (selected) {
+                            setState(() => _selectedCategory = cat);
+                          }
+                        },
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
             const SizedBox(height: 12),
 
-            if (entries.isEmpty)
-              _StaggeredItem(index: 6, child: _buildEmptyState())
+            if (displayEntries.isEmpty)
+              _StaggeredItem(index: 7, child: _buildEmptyState())
             else
-              ...entries.asMap().entries.map((entry) => _StaggeredItem(
-                index: entry.key + 6,
+              ...displayEntries.asMap().entries.map((entry) => _StaggeredItem(
+                index: entry.key + 7,
                 child: Padding(
                   padding: EdgeInsets.only(
-                      bottom: entry.key == entries.length - 1 ? 0 : 10),
+                      bottom: entry.key == displayEntries.length - 1 ? 0 : 10),
                   child: _buildActivityCardItem(entry.value),
                 ),
               )),

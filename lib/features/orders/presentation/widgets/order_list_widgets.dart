@@ -117,7 +117,7 @@ class _AnimatedEntryState extends State<AnimatedEntry>
 class OrderListHeader extends StatelessWidget {
   final String title;
   final String subtitle;
-  final VoidCallback onBack;
+  final VoidCallback? onBack;
   final VoidCallback onSort;
   final VoidCallback onFilterSettings;
   final bool filterActive;
@@ -126,7 +126,7 @@ class OrderListHeader extends StatelessWidget {
     super.key,
     required this.title,
     required this.subtitle,
-    required this.onBack,
+    this.onBack,
     required this.onSort,
     required this.onFilterSettings,
     this.filterActive = false,
@@ -146,14 +146,15 @@ class OrderListHeader extends StatelessWidget {
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(8, 4, 16, 14),
+          padding: EdgeInsets.fromLTRB(onBack != null ? 8 : 20, onBack != null ? 4 : 14, 16, 14),
           child: Row(
             children: [
-              IconButton(
-                onPressed: onBack,
-                icon: const Icon(Icons.arrow_back_rounded,
-                    color: Colors.white, size: 22),
-              ),
+              if (onBack != null)
+                IconButton(
+                  onPressed: onBack,
+                  icon: const Icon(Icons.arrow_back_rounded,
+                      color: Colors.white, size: 22),
+                ),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,

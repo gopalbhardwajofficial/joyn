@@ -141,6 +141,16 @@ class _PurchaseOrdersListScreenState extends State<PurchaseOrdersListScreen>
         _isLoading = false;
         _applyFilters();
       });
+
+      // Background cloud sync
+      _salesRepository.syncPurchaseOrdersFromCloud().then((cloudOrders) {
+        if (mounted && cloudOrders.isNotEmpty) {
+          setState(() {
+            _orders = cloudOrders;
+            _applyFilters();
+          });
+        }
+      }).catchError((_) {});
     } catch (e) {
       debugPrint('Error loading orders: $e');
       if (!mounted) return;

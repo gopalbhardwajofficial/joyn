@@ -3,7 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:joyn/core/theme/joyn_typography.dart';
 import 'package:joyn/core/theme/joyn_colors.dart';
-import 'package:joyn/core/widgets/Premium_widget.dart';
+import 'package:joyn/core/services/report_export_service.dart';
+import 'package:joyn/core/services/api_service.dart';
+import '../../../orders/data/sales_repository.dart';
 
 enum ReportPeriod { today, thisWeek, thisMonth, thisQuarter, thisFinancialYear, custom }
 
@@ -31,19 +33,66 @@ class _SalePurchaseByPartyScreenState extends State<SalePurchaseByPartyScreen> {
   DateTimeRange? _customRange;
   bool _isLoading = false;
 
-  late List<PartySalePurchaseEntry> _allEntries;
+  List<PartySalePurchaseEntry> _allEntries = [];
 
   @override
   void initState() {
     super.initState();
-    _allEntries = _loadSampleEntries();
+    _loadRealEntries();
   }
 
-  List<PartySalePurchaseEntry> _loadSampleEntries() {
-    return const [
-      PartySalePurchaseEntry(partyName: 'gill', saleAmount: 100, purchaseAmount: 0),
-      PartySalePurchaseEntry(partyName: 'Gopal', saleAmount: 1000, purchaseAmount: 0),
-    ];
+  Future<void> _loadRealEntries() async {
+    setState(() => _isLoading = true);
+    try {
+      final repo = SalesRepository();
+      final parties = await repo.getParties();
+      final sales = await repo.getSaleOrders();
+      final purchases = await repo.getPurchaseOrders();
+
+      final range = _rangeForPeriod(_period);
+      final entriesMap = <String, PartySalePurchaseEntry>{};
+
+      for (final p in parties) {
+        entriesMap[p.name] = PartySalePurchaseEntry(
+          partyName: p.name,
+          saleAmount: 0,
+          purchaseAmount: 0,
+        );
+      }
+
+      for (final s in sales) {
+        final d = DateTime.tryParse(s.date);
+        if (d != null && (d.isBefore(range.start) || d.isAfter(range.end))) continue;
+        final name = s.customerName.trim().isNotEmpty ? s.customerName.trim() : 'Customer';
+        final existing = entriesMap[name] ?? PartySalePurchaseEntry(partyName: name, saleAmount: 0, purchaseAmount: 0);
+        entriesMap[name] = PartySalePurchaseEntry(
+          partyName: name,
+          saleAmount: existing.saleAmount + s.totalAmount,
+          purchaseAmount: existing.purchaseAmount,
+        );
+      }
+
+      for (final p in purchases) {
+        final d = DateTime.tryParse(p.date);
+        if (d != null && (d.isBefore(range.start) || d.isAfter(range.end))) continue;
+        final name = p.partyName.trim().isNotEmpty ? p.partyName.trim() : 'Supplier';
+        final existing = entriesMap[name] ?? PartySalePurchaseEntry(partyName: name, saleAmount: 0, purchaseAmount: 0);
+        entriesMap[name] = PartySalePurchaseEntry(
+          partyName: name,
+          saleAmount: existing.saleAmount,
+          purchaseAmount: existing.purchaseAmount + p.totalAmount,
+        );
+      }
+
+      if (mounted) {
+        setState(() {
+          _allEntries = entriesMap.values.toList();
+          _isLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   DateTimeRange _rangeForPeriod(ReportPeriod period) {
@@ -127,14 +176,14 @@ class _SalePurchaseByPartyScreenState extends State<SalePurchaseByPartyScreen> {
             label: 'Pdf',
             icon: Icons.picture_as_pdf_rounded,
             color: const Color(0xFFDC2626),
-            onTap: _showPdfOptions,
+            onTap: _showRealPdfOptions,
           ),
           const SizedBox(width: 6),
           _buildAppBarIconButton(
             label: 'xls',
             icon: Icons.grid_on_rounded,
             color: JoynColors.success,
-            onTap: _showExcelOptions,
+            onTap: _showRealExcelOptions,
           ),
           const SizedBox(width: 12),
         ],
@@ -807,98 +856,69 @@ class _SalePurchaseByPartyScreenState extends State<SalePurchaseByPartyScreen> {
   }
 
 
-  Future<void> _showPdfOptions() async {
-    await _showOptionsSheet(
-      title: 'PDF Options',
-      options: [
-        _OptionItem(icon: Icons.description_outlined, label: 'Open PDF', onTap: () {}),
-        _OptionItem(icon: Icons.print_outlined, label: 'Print PDF', onTap: () {}),
-        _OptionItem(icon: Icons.ios_share_rounded, label: 'Share PDF', onTap: () {}),
-        _OptionItem(icon: Icons.download_rounded, label: 'Save PDF to Phone', onTap: () {}),
-      ],
-    );
-  }
+  Future<void> _showRealPdfOptions() async {
+    final entries = _filteredEntries;
+    final range = _rangeForPeriod(_period);
+    final dateFmt = DateFormat('dd/MM/yyyy');
+    final periodStr = '${dateFmt.format(range.start)} - ${dateFmt.format(range.end)}';
 
-  Future<void> _showExcelOptions() async {
-    await _showOptionsSheet(
-      title: 'Excel Options',
-      options: [
-        _OptionItem(icon: Icons.description_outlined, label: 'Open Excel', onTap: () {}),
-        _OptionItem(icon: Icons.ios_share_rounded, label: 'Share Excel', onTap: () {}),
-        _OptionItem(icon: Icons.file_upload_outlined, label: 'Export to Excel', onTap: () {}),
-        _OptionItem(icon: Icons.calendar_today_outlined, label: 'Schedule Report', onTap: () {}),
-      ],
-    );
-  }
+    final tableHeaders = ['Party Name', 'Total Sales', 'Total Purchases', 'Net Balance'];
+    final tableRows = entries.map((e) {
+      final net = e.saleAmount - e.purchaseAmount;
+      return [
+        e.partyName,
+        '₹${_fmt(e.saleAmount)}',
+        '₹${_fmt(e.purchaseAmount)}',
+        '₹${_fmt(net)}',
+      ];
+    }).toList();
 
-  Future<void> _showOptionsSheet({
-    required String title,
-    required List<_OptionItem> options,
-  }) async {
-    await showModalBottomSheet<void>(
+    final summary = {
+      'Total Parties': '${entries.length}',
+      'Total Sales': '₹${_fmt(_totalSale)}',
+      'Total Purchases': '₹${_fmt(_totalPurchase)}',
+    };
+
+    await ReportExportService.showPdfOptionsSheet(
       context: context,
-      backgroundColor: JoynColors.background,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (sheetContext) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildSheetHeader(title, sheetContext),
-              Divider(height: 1, color: JoynColors.border),
-              ...options.map((opt) => InkWell(
-                onTap: () {
-                  Navigator.pop(sheetContext);
-                  opt.onTap();
-                },
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                  child: Row(
-                    children: [
-                      Icon(opt.icon, size: 20, color: JoynColors.primary),
-                      const SizedBox(width: 16),
-                      Text(
-                        opt.label,
-                        style: JoynTypography.bodyLarge.copyWith(fontSize: 14),
-                      ),
-                    ],
-                  ),
-                ),
-              )),
-              const SizedBox(height: 8),
-            ],
-          ),
-        );
-      },
+      title: 'Sale & Purchase By Party Report',
+      periodLabel: periodStr,
+      summaryStats: summary,
+      tableHeaders: tableHeaders,
+      tableRows: tableRows,
     );
   }
 
-  void _showSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          message,
-          style: JoynTypography.bodyMedium.copyWith(color: Colors.white),
-        ),
-        backgroundColor: JoynColors.primary,
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.all(16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        duration: const Duration(milliseconds: 1500),
-      ),
+  Future<void> _showRealExcelOptions() async {
+    final entries = _filteredEntries;
+    final range = _rangeForPeriod(_period);
+    final dateFmt = DateFormat('dd/MM/yyyy');
+    final periodStr = '${dateFmt.format(range.start)} - ${dateFmt.format(range.end)}';
+
+    final tableHeaders = ['Party Name', 'Total Sales (INR)', 'Total Purchases (INR)', 'Net Balance (INR)'];
+    final tableRows = entries.map((e) {
+      final net = e.saleAmount - e.purchaseAmount;
+      return [
+        e.partyName,
+        e.saleAmount.toStringAsFixed(2),
+        e.purchaseAmount.toStringAsFixed(2),
+        net.toStringAsFixed(2),
+      ];
+    }).toList();
+
+    final summary = {
+      'Total Parties': '${entries.length}',
+      'Total Sales': _totalSale.toStringAsFixed(2),
+      'Total Purchases': _totalPurchase.toStringAsFixed(2),
+    };
+
+    await ReportExportService.showExcelOptionsSheet(
+      context: context,
+      title: 'Sale & Purchase By Party Report',
+      periodLabel: periodStr,
+      summaryStats: summary,
+      tableHeaders: tableHeaders,
+      tableRows: tableRows,
     );
   }
-}
-
-class _OptionItem {
-  const _OptionItem({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
 }

@@ -238,6 +238,8 @@ class SavedItemOption {
   final double sellingPrice;
   final int stock;
   final String barcode;
+  final String hsnSac;
+  final double taxRate;
 
   const SavedItemOption({
     required this.name,
@@ -247,6 +249,8 @@ class SavedItemOption {
     this.sellingPrice = 0,
     this.stock = 0,
     this.barcode = '',
+    this.hsnSac = '',
+    this.taxRate = 0,
   });
 
   factory SavedItemOption.fromJson(Map<String, dynamic> json) {
@@ -258,6 +262,8 @@ class SavedItemOption {
       sellingPrice: (json['sellingPrice'] as num?)?.toDouble() ?? 0,
       stock: (json['stock'] as num?)?.toInt() ?? 0,
       barcode: (json['barcode'] ?? '').toString(),
+      hsnSac: (json['hsnSac'] ?? json['hsn_sac'] ?? json['hsnCode'] ?? '').toString(),
+      taxRate: (json['taxRate'] as num?)?.toDouble() ?? (json['taxRatePercent'] as num?)?.toDouble() ?? 0,
     );
   }
 
@@ -270,6 +276,8 @@ class SavedItemOption {
       sellingPrice: item.sellingPrice,
       stock: item.stock,
       barcode: item.barcode,
+      hsnSac: item.hsnSac,
+      taxRate: item.taxRatePercent,
     );
   }
 }
@@ -307,6 +315,7 @@ class _AddOrderItemDialogState extends State<AddOrderItemDialog> {
 
   bool _isOneTimeItem = false;
   String _selectedUnit = 'Select Unit';
+  String _hsnSac = '';
   bool _applyTax = false;
   _TaxInclusiveMode _taxInclusiveMode = _TaxInclusiveMode.exclusive;
   _DiscountMode _discountMode = _DiscountMode.percent;
@@ -334,6 +343,7 @@ class _AddOrderItemDialogState extends State<AddOrderItemDialog> {
     _categoryController = TextEditingController(text: existing?.category ?? '');
 
     if (existing != null) {
+      _hsnSac = existing.hsnSac;
       _priceController = TextEditingController(
         text: existing.unitPrice.toStringAsFixed(2),
       );
@@ -394,6 +404,7 @@ class _AddOrderItemDialogState extends State<AddOrderItemDialog> {
       _nameController.text = item.name;
       _categoryController.text = item.category;
       _selectedUnit = item.unit;
+      _hsnSac = item.hsnSac;
       _qtyController.text = '1';
 
       if (widget.isPurchaseOrder) {
@@ -942,6 +953,7 @@ class _AddOrderItemDialogState extends State<AddOrderItemDialog> {
           ? false
           : (_taxInclusiveMode == _TaxInclusiveMode.inclusive),
       unit: _selectedUnit != 'Select Unit' ? _selectedUnit : '',
+      hsnSac: _hsnSac,
     );
     Navigator.pop(context, item);
   }

@@ -81,4 +81,17 @@ class JoynTypography {
     color: JoynColors.secondaryText,
     letterSpacing: 0.1,
   );
+
+  static TextStyle get headlineMedium => GoogleFonts.plusJakartaSans(
+    fontSize: 18,
+    fontWeight: FontWeight.w700,
+    color: JoynColors.primary,
+    letterSpacing: -0.2,
+  );
+
+  static TextStyle get bodySmall => GoogleFonts.plusJakartaSans(
+    fontSize: 12,
+    fontWeight: FontWeight.w400,
+    color: JoynColors.secondaryText,
+  );
 }
