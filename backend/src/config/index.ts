@@ -9,6 +9,11 @@ export const config = {
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '15d',
   refreshTokenSecret: process.env.REFRESH_TOKEN_SECRET || 'joyn_default_refresh_secret',
   twoFactorApiKey: process.env.TWO_FACTOR_API_KEY || '1eed4550-986f-11f1-9cb1-0200cd936042',
+  fast2sms: {
+    apiKey: process.env.FAST2SMS_API_KEY || 'XSmTex1JHrld92jwskCziBPfRh5G7MKL8QoIVgqbnF3ZN4cpUD7KGaWC6v2NDAqgm1t39TYBrMdURLSJ',
+    phoneNumberId: process.env.FAST2SMS_PHONE_NUMBER_ID || '1408305535691553',
+    teamMessageId: process.env.FAST2SMS_TEAM_MESSAGE_ID || '37523',
+  },
   redis: {
     host: process.env.REDIS_HOST || '127.0.0.1',
     port: parseInt(process.env.REDIS_PORT || '6379', 10),

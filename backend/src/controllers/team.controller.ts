@@ -1,6 +1,6 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { getDbPool } from '../db/connection.js';
-import { send2FactorOtp } from '../services/sms.service.js';
+import { send2FactorOtp, sendFast2SmsWhatsAppTeamInvite } from '../services/sms.service.js';
 
 export async function getTeamMembersHandler(req: FastifyRequest, reply: FastifyReply) {
   try {
@@ -206,7 +206,16 @@ export async function createTeamMemberHandler(req: FastifyRequest, reply: Fastif
 
     const inviteMessage = `${bizName} has invited you to join the app as a team member for the ${finalRoleName} role. Please accept and download the app here: https://api.joynonline.in/download`;
 
-    // Trigger SMS to Indian mobile number
+    // 1. Trigger Official Fast2SMS WhatsApp Template Message to Indian mobile number
+    try {
+      if (cleanPhone && cleanPhone.length === 10) {
+        sendFast2SmsWhatsAppTeamInvite(cleanPhone, m.name, finalRoleName, bizName).catch((err) => {
+          console.warn('Fast2SMS WhatsApp dispatch warning:', err?.message || err);
+        });
+      }
+    } catch (_) {}
+
+    // 2. Trigger SMS to Indian mobile number as fallback
     try {
       if (cleanPhone && cleanPhone.length === 10) {
         send2FactorOtp(cleanPhone).catch((err) => {

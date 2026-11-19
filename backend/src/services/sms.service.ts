@@ -56,3 +56,64 @@ export async function verify2FactorOtp(phoneNumber: string, inputOtp: string): P
   }
   return false;
 }
+
+export async function sendFast2SmsWhatsAppTeamInvite(
+  phoneNumber: string,
+  memberName: string,
+  roleName: string,
+  businessName: string
+): Promise<{ success: boolean; message: string; requestId?: string }> {
+  const cleanPhone = phoneNumber.replace(/\D/g, '').slice(-10);
+  if (cleanPhone.length !== 10) {
+    return { success: false, message: 'Invalid 10-digit Indian phone number.' };
+  }
+
+  const cleanMemberName = (memberName || 'Team Member').trim();
+  const cleanRoleName = (roleName || 'Team Member').trim();
+  const cleanBizName = (businessName || 'JOYN Business').trim();
+
+  try {
+    const payload = {
+      message_id: config.fast2sms.teamMessageId,
+      phone_number_id: config.fast2sms.phoneNumberId,
+      numbers: cleanPhone,
+      variables_values: `${cleanMemberName}|${cleanRoleName}|${cleanBizName}`
+    };
+
+    console.log(`Sending Fast2SMS WhatsApp invite to ${cleanPhone}...`, payload);
+
+    const response = await axios.post(
+      'https://www.fast2sms.com/dev/whatsapp',
+      payload,
+      {
+        headers: {
+          'Authorization': config.fast2sms.apiKey,
+          'Content-Type': 'application/json'
+        },
+        timeout: 10000
+      }
+    );
+
+    console.log('Fast2SMS WhatsApp API Response:', response.data);
+
+    if (response.data && (response.data.return === true || response.data.status === true)) {
+      return {
+        success: true,
+        message: 'WhatsApp invitation sent successfully.',
+        requestId: response.data.request_id
+      };
+    } else {
+      console.warn('Fast2SMS WhatsApp API warning:', response.data);
+      return {
+        success: false,
+        message: response.data?.message?.[0] || 'Fast2SMS returned non-success.'
+      };
+    }
+  } catch (error: any) {
+    console.error('Fast2SMS WhatsApp API error:', error?.response?.data || error?.message || error);
+    return {
+      success: false,
+      message: error?.response?.data?.message?.[0] || error?.message || 'Failed to dispatch WhatsApp message.'
+    };
+  }
+}
