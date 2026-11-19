@@ -83,6 +83,7 @@ flutter:
   assets:
     - assets/joynsplashlogo.jpeg
     - assets/joynrealsplash.mp4
+    - assets/logoonvideo.png
     - assets/logoicon.jpeg
     - assets/avatars/
 

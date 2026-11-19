@@ -161,6 +161,12 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Image.asset(
+                    'assets/logoonvideo.png',
+                    height: 34,
+                    fit: BoxFit.contain,
+                  ),
+
                   const Spacer(),
 
                   Text(
