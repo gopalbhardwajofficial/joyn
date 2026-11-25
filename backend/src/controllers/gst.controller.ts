@@ -919,22 +919,12 @@ export async function lookupGstinHandler(req: FastifyRequest, reply: FastifyRepl
     const stateName = stateMap[stateCode] || 'Delhi';
     const pool = getDbPool();
 
-    const partyMatch = await pool.query(
-      `SELECT name, address, city, state FROM parties WHERE UPPER(gst_number) = $1 LIMIT 1`,
-      [cleanGstin]
-    );
-
     let legalName = '';
     let address = '';
     let city = '';
     let pincode = '';
 
-    if (partyMatch.rows.length > 0) {
-      const p = partyMatch.rows[0];
-      legalName = p.name || '';
-      address = p.address || '';
-      city = p.city || '';
-    } else {
+    try {
       const bizMatch = await pool.query(
         `SELECT business_name, address, city, state, pincode FROM business_profile WHERE UPPER(gst_number) = $1 LIMIT 1`,
         [cleanGstin]
@@ -946,7 +936,7 @@ export async function lookupGstinHandler(req: FastifyRequest, reply: FastifyRepl
         city = b.city || '';
         pincode = b.pincode || '';
       }
-    }
+    } catch (_) {}
 
     return reply.send({
       success: true,

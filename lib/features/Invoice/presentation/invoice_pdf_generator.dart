@@ -573,7 +573,7 @@ class InvoicePdfGenerator {
               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
               children: [
                 pw.Text(
-                  'Generated via JOYN ERP Billing • Powered by joynonline.in',
+                  'Generated via JOYN ERP Billing | Powered by joynonline.in',
                   style: const pw.TextStyle(fontSize: 7.5, color: PdfColors.grey600),
                 ),
                 pw.Text(

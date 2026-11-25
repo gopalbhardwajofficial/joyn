@@ -10,8 +10,11 @@ import {
 import { verifyBusinessAccess } from '../middleware/rbac.middleware.js';
 
 export async function gstRoutes(fastify: FastifyInstance) {
-  // Guard endpoints with JWT authentication
+  // Guard endpoints with JWT authentication (except public lookup utility)
   fastify.addHook('onRequest', async (req, reply) => {
+    if (req.url.includes('/lookup/')) {
+      return;
+    }
     try {
       await req.jwtVerify();
     } catch (err) {
@@ -21,6 +24,9 @@ export async function gstRoutes(fastify: FastifyInstance) {
 
   // GSTR Returns & Analytics require access_reports
   fastify.addHook('preHandler', async (req, reply) => {
+    if (req.url.includes('/lookup/')) {
+      return;
+    }
     const access = await verifyBusinessAccess(req, reply, 'access_reports');
     if (!access) return reply;
   });
