@@ -97,10 +97,15 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
 
       final String? autoNumber = await SmsAutoFill().hint;
       if (autoNumber != null && autoNumber.isNotEmpty) {
-        String formatted = autoNumber;
-        if (!formatted.startsWith('+')) {
-          formatted = '+91 $formatted';
+        String digits = autoNumber.replaceAll(RegExp(r'\D'), '');
+        if (digits.length == 12 && digits.startsWith('91')) {
+          digits = digits.substring(2);
+        } else if (digits.length == 11 && (digits.startsWith('0') || digits.startsWith('1'))) {
+          digits = digits.substring(1);
+        } else if (digits.length > 10) {
+          digits = digits.substring(digits.length - 10);
         }
+        final formatted = digits.length == 10 ? '+91 $digits' : autoNumber;
         ref.read(authProvider.notifier).setPhoneNumber(formatted);
       }
     } catch (_) {

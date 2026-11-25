@@ -864,3 +864,103 @@ export async function getGstr9Handler(req: FastifyRequest, reply: FastifyReply) 
   }
 }
 
+
+export async function lookupGstinHandler(req: FastifyRequest, reply: FastifyReply) {
+  try {
+    const { gstin } = req.params as { gstin: string };
+    const cleanGstin = (gstin || '').trim().toUpperCase();
+
+    if (cleanGstin.length !== 15) {
+      return reply.status(400).send({ success: false, message: 'Invalid 15-digit GSTIN.' });
+    }
+
+    const stateCode = cleanGstin.substring(0, 2);
+    const pan = cleanGstin.substring(2, 12);
+
+    const stateMap: Record<string, string> = {
+      '01': 'Jammu and Kashmir',
+      '02': 'Himachal Pradesh',
+      '03': 'Punjab',
+      '04': 'Chandigarh',
+      '05': 'Uttarakhand',
+      '06': 'Haryana',
+      '07': 'Delhi',
+      '08': 'Rajasthan',
+      '09': 'Uttar Pradesh',
+      '10': 'Bihar',
+      '11': 'Sikkim',
+      '12': 'Arunachal Pradesh',
+      '13': 'Nagaland',
+      '14': 'Manipur',
+      '15': 'Mizoram',
+      '16': 'Tripura',
+      '17': 'Meghalaya',
+      '18': 'Assam',
+      '19': 'West Bengal',
+      '20': 'Jharkhand',
+      '21': 'Odisha',
+      '22': 'Chhattisgarh',
+      '23': 'Madhya Pradesh',
+      '24': 'Gujarat',
+      '26': 'Dadra and Nagar Haveli and Daman and Diu',
+      '27': 'Maharashtra',
+      '29': 'Karnataka',
+      '30': 'Goa',
+      '31': 'Lakshadweep',
+      '32': 'Kerala',
+      '33': 'Tamil Nadu',
+      '34': 'Puducherry',
+      '35': 'Andaman and Nicobar Islands',
+      '36': 'Telangana',
+      '37': 'Andhra Pradesh',
+      '38': 'Ladakh'
+    };
+
+    const stateName = stateMap[stateCode] || 'Delhi';
+    const pool = getDbPool();
+
+    const partyMatch = await pool.query(
+      `SELECT name, address, city, state FROM parties WHERE UPPER(gst_number) = $1 LIMIT 1`,
+      [cleanGstin]
+    );
+
+    let legalName = '';
+    let address = '';
+    let city = '';
+    let pincode = '';
+
+    if (partyMatch.rows.length > 0) {
+      const p = partyMatch.rows[0];
+      legalName = p.name || '';
+      address = p.address || '';
+      city = p.city || '';
+    } else {
+      const bizMatch = await pool.query(
+        `SELECT business_name, address, city, state, pincode FROM business_profile WHERE UPPER(gst_number) = $1 LIMIT 1`,
+        [cleanGstin]
+      );
+      if (bizMatch.rows.length > 0) {
+        const b = bizMatch.rows[0];
+        legalName = b.business_name || '';
+        address = b.address || '';
+        city = b.city || '';
+        pincode = b.pincode || '';
+      }
+    }
+
+    return reply.send({
+      success: true,
+      gstin: cleanGstin,
+      legalName,
+      tradeName: legalName,
+      address,
+      city,
+      state: stateName,
+      stateCode,
+      pincode,
+      pan
+    });
+  } catch (error: any) {
+    return reply.status(500).send({ success: false, message: error?.message || 'Failed to lookup GSTIN.' });
+  }
+}

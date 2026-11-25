@@ -4,6 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../../core/theme/joyn_colors.dart';
 import '../../../core/theme/joyn_typography.dart';
+import '../../../core/services/local_storage_service.dart';
+import '../../Inventory/presentation/add_new_item_screen.dart';
+import '../../Inventory/presentation/add_new_party_screen.dart';
+import '../../orders/presentation/add_sale_order_screen.dart';
+import '../../orders/presentation/add_purchase_order_screen.dart';
+import '../../barcode/flashlabel/screens/home_screen.dart' as flash_barcode;
 import '../data/kpi_analytics_repository.dart';
 import '../models/kpi_analytics_models.dart';
 import 'analytics/item_sales_analytics_screen.dart';
@@ -26,6 +32,43 @@ class _OverviewScreenState extends ConsumerState<OverviewScreen> {
   bool _isLoading = true;
   String? _errorMessage;
   KpiExecutiveSummary _summary = KpiExecutiveSummary.empty();
+  DateTime _lastUpdated = DateTime.now();
+  bool _showDetailedAnalytics = false;
+
+  String get _businessName => LocalStorageService().businessName.isNotEmpty
+      ? LocalStorageService().businessName
+      : 'My Business';
+
+  String get _userName {
+    final name = LocalStorageService().userName.trim();
+    if (name.isNotEmpty) return name;
+    return 'Rohit';
+  }
+
+  String get _timeGreeting {
+    final hour = DateTime.now().hour;
+    if (hour < 5 || hour >= 22) return 'Working late';
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+  }
+
+  String get _dateHeader {
+    final now = DateTime.now();
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    final dayName = days[now.weekday - 1];
+    final monthName = months[now.month - 1];
+    return '$dayName, $monthName ${now.day} • $_businessName';
+  }
+
+  String get _updatedTimeString {
+    final h = _lastUpdated.hour;
+    final m = _lastUpdated.minute.toString().padLeft(2, '0');
+    final period = h >= 12 ? 'PM' : 'AM';
+    final hour12 = h == 0 ? 12 : (h > 12 ? h - 12 : h);
+    return 'Updated $hour12:$m $period';
+  }
 
   // Chart series visibility toggles
   bool _showSalesLine = true;
@@ -70,6 +113,7 @@ class _OverviewScreenState extends ConsumerState<OverviewScreen> {
         setState(() {
           _summary = data;
           _isLoading = false;
+          _lastUpdated = DateTime.now();
         });
       }
     } catch (e) {
@@ -192,53 +236,37 @@ class _OverviewScreenState extends ConsumerState<OverviewScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: JoynColors.background,
+      backgroundColor: const Color(0xFFF7F4EF), // warm sand/cream matching image3.png
       body: RefreshIndicator(
         onRefresh: _loadData,
-        color: JoynColors.primary,
+        color: const Color(0xFFB3392E),
         child: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : _errorMessage != null
                 ? _buildErrorView()
                 : SingleChildScrollView(
                     physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 36),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Top Header with Time Range Filter Pill
-                        _buildTopFilterHeader(),
+                        // Top Header (Greeting + Date + Action Buttons)
+                        _buildWebStyleHeader(),
                         const SizedBox(height: 16),
 
                         // Actionable Alert Banners (if any critical thresholds met)
                         _buildActionAlerts(),
 
-                        // 4 Executive Financial Hero Cards
-                        _buildExecutiveHeroCards(),
+                        // 1. MAIN SECTION: 1 Large Red Hero Card
+                        _buildMainSalesCard(),
+                        const SizedBox(height: 16),
+
+                        // 2. THE 7 SUB-SECTIONS (Matching web portal layout)
+                        _buildSevenSubSections(),
                         const SizedBox(height: 24),
 
-                        // Interactive Spline Trend Chart (fl_chart)
-                        _buildSplineTrendChart(),
-                        const SizedBox(height: 24),
-
-                        // Most Selling Items (Star Products)
-                        _buildMostSellingSection(),
-                        const SizedBox(height: 24),
-
-                        // Least Selling / Dead Stock Warning Section
-                        _buildDeadStockSection(),
-                        const SizedBox(height: 24),
-
-                        // Top VIP Customers & Suppliers
-                        _buildTopPartiesSection(),
-                        const SizedBox(height: 24),
-
-                        // Payment Modes Breakdown
-                        _buildPaymentModesSection(),
-                        const SizedBox(height: 24),
-
-                        // Stock Health & Total Asset Valuation
-                        _buildStockValuationSection(),
+                        // Expandable Deep-Dive Business Intelligence
+                        _buildDetailedAnalyticsSection(),
                       ],
                     ),
                   ),
@@ -247,69 +275,973 @@ class _OverviewScreenState extends ConsumerState<OverviewScreen> {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // TOP FILTER HEADER
+  // TOP WEB-STYLE HEADER (Matching image3.png)
   // ═══════════════════════════════════════════════════════════════
-  Widget _buildTopFilterHeader() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  Widget _buildWebStyleHeader() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        Text(
+          _dateHeader,
+          style: const TextStyle(
+            color: Color(0xFF71717A),
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '$_timeGreeting, $_userName.',
+          style: const TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.w900,
+            color: Color(0xFF18181B),
+            letterSpacing: -0.5,
+          ),
+        ),
+        const SizedBox(height: 2),
+        const Text(
+          "Here's your business today.",
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFFA1A1AA),
+          ),
+        ),
+        const SizedBox(height: 14),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              'Business Intelligence',
-              style: JoynTypography.caption.copyWith(
-                color: JoynColors.primary,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.5,
-                fontSize: 11,
-              ),
+            Row(
+              children: [
+                Text(
+                  _updatedTimeString,
+                  style: const TextStyle(
+                    color: Color(0xFF71717A),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                IconButton(
+                  icon: const Icon(Icons.refresh_rounded, size: 18, color: Color(0xFF71717A)),
+                  onPressed: _loadData,
+                  constraints: const BoxConstraints(),
+                  padding: const EdgeInsets.all(4),
+                ),
+              ],
             ),
-            const SizedBox(height: 2),
-            Text(
-              'Executive KPIs',
-              style: JoynTypography.titleMedium.copyWith(
-                fontWeight: FontWeight.w900,
-                fontSize: 22,
-                color: JoynColors.primaryText,
-                letterSpacing: -0.5,
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const AddSaleOrderScreen()),
+                ).then((_) => _loadData());
+              },
+              icon: const Icon(Icons.add_rounded, size: 16, color: Colors.white),
+              label: const Text(
+                'New sale',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 12,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFB3392E),
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
               ),
             ),
           ],
         ),
-        // Filter Pill
-        InkWell(
-          onTap: _showDateRangePickerSheet,
-          borderRadius: BorderRadius.circular(20),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-            decoration: BoxDecoration(
-              color: JoynColors.primary.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: JoynColors.primary.withValues(alpha: 0.25),
-                width: 1.2,
+      ],
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // 1. MAIN SECTION: LARGE RED HERO CARD (Matching image3.png)
+  // ═══════════════════════════════════════════════════════════════
+  Widget _buildMainSalesCard() {
+    final now = DateTime.now();
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const fullMonths = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    final currentMonthFull = fullMonths[now.month - 1];
+    final currentMonthShort = months[now.month - 1];
+
+    final timelineMonths = <String>[];
+    for (int i = 5; i >= 0; i--) {
+      final m = DateTime(now.year, now.month - i, 1);
+      timelineMonths.add(months[m.month - 1]);
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: const Color(0xFFB3392E),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFB3392E).withValues(alpha: 0.25),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Total sales • $currentMonthFull',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.2,
+                ),
               ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.calendar_today_rounded, size: 13, color: JoynColors.primary),
-                const SizedBox(width: 6),
-                Text(
-                  _selectedRange.label,
-                  style: JoynTypography.caption.copyWith(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 12,
-                    color: JoynColors.primary,
+              InkWell(
+                onTap: _showDateRangePickerSheet,
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _selectedRange.label,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      const Icon(Icons.keyboard_arrow_down_rounded, size: 14, color: Colors.white),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 4),
-                const Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: JoynColors.primary),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            '₹${_summary.grossSales.toStringAsFixed(0)}',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 38,
+              fontWeight: FontWeight.w900,
+              letterSpacing: -1,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              _summary.grossSales > 0
+                  ? '${_summary.salesGrowthPercent >= 0 ? '+' : ''}${_summary.salesGrowthPercent.toStringAsFixed(1)}% vs last period'
+                  : 'No sales yet this month',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(height: 28),
+          Column(
+            children: [
+              Stack(
+                alignment: Alignment.center,
+                children: [
+                  Container(
+                    height: 2,
+                    width: double.infinity,
+                    color: Colors.white.withValues(alpha: 0.35),
+                  ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: timelineMonths.map((m) {
+                      final isCurrent = m == currentMonthShort;
+                      return Container(
+                        width: isCurrent ? 12 : 7,
+                        height: isCurrent ? 12 : 7,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          border: isCurrent
+                              ? Border.all(color: const Color(0xFFB3392E), width: 2)
+                              : null,
+                          boxShadow: isCurrent
+                              ? [
+                                  BoxShadow(
+                                    color: Colors.white.withValues(alpha: 0.6),
+                                    blurRadius: 6,
+                                  ),
+                                ]
+                              : null,
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: timelineMonths.map((m) {
+                  final isCurrent = m == currentMonthShort;
+                  return Text(
+                    m,
+                    style: TextStyle(
+                      color: isCurrent ? Colors.white : Colors.white.withValues(alpha: 0.65),
+                      fontWeight: isCurrent ? FontWeight.w800 : FontWeight.w600,
+                      fontSize: 11,
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // 2. THE 7 SUB-SECTIONS (Matching image3.png)
+  // ═══════════════════════════════════════════════════════════════
+  Widget _buildSevenSubSections() {
+    final now = DateTime.now();
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final currentMonthShort = months[now.month - 1];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Sub-section 1 & 2: You'll get & You'll give
+        Row(
+          children: [
+            // 1. You'll get
+            Expanded(
+              child: InkWell(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => PartyAnalyticsScreen(
+                        topCustomers: _summary.topCustomers,
+                        topSuppliers: _summary.topSuppliers,
+                        creditAging: _summary.creditAging,
+                        totalReceivables: _summary.youllGet,
+                        dateRangeLabel: _rangeLabel,
+                      ),
+                    ),
+                  );
+                },
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  height: 130,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: const Color(0xFFE5E7EB), width: 1.2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.03),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        "You'll get",
+                        style: TextStyle(
+                          color: Color(0xFF71717A),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      Text(
+                        '₹${_summary.youllGet.toStringAsFixed(0)}',
+                        style: const TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.w900,
+                          color: Color(0xFF18181B),
+                        ),
+                      ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            '${_summary.topCustomers.length} parties',
+                            style: const TextStyle(
+                              color: Color(0xFF71717A),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const Text(
+                            'receivable',
+                            style: TextStyle(
+                              color: Color(0xFF16A34A),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+
+            // 2. You'll give (Black Card)
+            Expanded(
+              child: InkWell(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => PartyAnalyticsScreen(
+                        topCustomers: _summary.topCustomers,
+                        topSuppliers: _summary.topSuppliers,
+                        creditAging: _summary.creditAging,
+                        totalReceivables: _summary.youllGet,
+                        dateRangeLabel: _rangeLabel,
+                      ),
+                    ),
+                  );
+                },
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  height: 130,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF18181B),
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.1),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        "You'll give",
+                        style: TextStyle(
+                          color: Color(0xFFA1A1AA),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      Text(
+                        '₹${_summary.youllGive.toStringAsFixed(0)}',
+                        style: const TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white,
+                        ),
+                      ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            '${_summary.topSuppliers.length} suppliers',
+                            style: const TextStyle(
+                              color: Color(0xFFA1A1AA),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const Text(
+                            'payable',
+                            style: TextStyle(
+                              color: Color(0xFFF87171),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+
+        // Sub-section 3 & 4: Inventory health & Stock check
+        Row(
+          children: [
+            // 3. Inventory health
+            Expanded(
+              child: InkWell(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => StockHealthScreen(
+                        outOfStockItems: _summary.outOfStockItems,
+                        lowStockItems: _summary.lowStockItems,
+                        totalStockCost: _summary.totalStockValuationCost,
+                        potentialStockSale: _summary.potentialStockValuationSale,
+                        totalItemsCount: _summary.totalItemsCount,
+                      ),
+                    ),
+                  );
+                },
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  height: 160,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: const Color(0xFFE5E7EB), width: 1.2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.03),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Inventory health',
+                        style: TextStyle(
+                          color: Color(0xFF18181B),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              SizedBox(
+                                width: 48,
+                                height: 48,
+                                child: CircularProgressIndicator(
+                                  value: _summary.totalItemsCount > 0
+                                      ? (_summary.totalItemsCount - _summary.outOfStockCount) /
+                                          _summary.totalItemsCount
+                                      : 0,
+                                  strokeWidth: 6,
+                                  backgroundColor: const Color(0xFFE5E7EB),
+                                  valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF10B981)),
+                                ),
+                              ),
+                              Text(
+                                _summary.totalItemsCount > 0
+                                    ? '${((_summary.totalItemsCount - _summary.outOfStockCount) / _summary.totalItemsCount * 100).toInt()}%'
+                                    : '-',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF71717A),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Stock value',
+                                  style: TextStyle(
+                                    color: Color(0xFF71717A),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                Text(
+                                  '₹${_summary.totalStockValuationCost.toStringAsFixed(0)}',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w900,
+                                    color: Color(0xFF18181B),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Total items: ${_summary.totalItemsCount}',
+                              style: const TextStyle(color: Color(0xFF71717A), fontSize: 11)),
+                          Text('Low stock: ${_summary.lowStockCount}',
+                              style: const TextStyle(color: Color(0xFFD97706), fontSize: 11, fontWeight: FontWeight.w600)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+
+            // 4. Stock check (Pale mint card)
+            Expanded(
+              child: Container(
+                height: 160,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEBF7F0),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFFD1FAE5), width: 1.2),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Stock check',
+                      style: TextStyle(
+                        color: Color(0xFF065F46),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    Text(
+                      _summary.lowStockCount > 0
+                          ? '${_summary.lowStockCount} items low in stock'
+                          : (_summary.totalItemsCount == 0 ? 'No items yet' : 'All items in stock'),
+                      style: const TextStyle(
+                        color: Color(0xFF065F46),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF22C55E),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.check, size: 16, color: Colors.white),
+                        ),
+                        ElevatedButton(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => const AddNewItemScreen()),
+                            ).then((_) => _loadData());
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: const Color(0xFF065F46),
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              side: const BorderSide(color: Color(0xFFD1FAE5)),
+                            ),
+                          ),
+                          child: const Text(
+                            'Add items',
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+
+        // Sub-section 5 & 6: Purchases & Unpaid invoices
+        Row(
+          children: [
+            // 5. Purchases • Nov
+            Expanded(
+              child: Container(
+                height: 120,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFFE5E7EB), width: 1.2),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.03),
+                      blurRadius: 8,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Purchases • $currentMonthShort',
+                      style: const TextStyle(
+                        color: Color(0xFF71717A),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      '₹${_summary.totalPurchases.toStringAsFixed(0)}',
+                      style: const TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF18181B),
+                      ),
+                    ),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(3),
+                      child: Container(
+                        height: 4,
+                        width: double.infinity,
+                        color: const Color(0xFFF3F4F6),
+                        child: FractionallySizedBox(
+                          alignment: Alignment.centerLeft,
+                          widthFactor: _summary.grossSales > 0
+                              ? (_summary.totalPurchases / (_summary.grossSales + _summary.totalPurchases)).clamp(0.05, 1.0)
+                              : 0.1,
+                          child: Container(color: const Color(0xFF18181B)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+
+            // 6. Unpaid invoices
+            Expanded(
+              child: Container(
+                height: 120,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFFE5E7EB), width: 1.2),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.03),
+                      blurRadius: 8,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Unpaid invoices',
+                      style: TextStyle(
+                        color: Color(0xFF71717A),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      '${_summary.unpaidInvoicesCount}',
+                      style: const TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF18181B),
+                      ),
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          _summary.unpaidInvoicesCount == 0 ? 'all settled' : 'payment pending',
+                          style: TextStyle(
+                            color: _summary.unpaidInvoicesCount == 0
+                                ? const Color(0xFF71717A)
+                                : const Color(0xFFD97706),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        Icon(
+                          _summary.unpaidInvoicesCount == 0
+                              ? Icons.check_rounded
+                              : Icons.warning_amber_rounded,
+                          size: 16,
+                          color: _summary.unpaidInvoicesCount == 0
+                              ? const Color(0xFF18181B)
+                              : const Color(0xFFD97706),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+
+        // Sub-section 7: Quick Actions
+        _buildQuickActionsSubSection(),
+      ],
+    );
+  }
+
+  Widget _buildQuickActionsSubSection() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE5E7EB), width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Quick actions',
+            style: TextStyle(
+              color: Color(0xFF18181B),
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: _buildActionCard(
+                  icon: Icons.inventory_2_outlined,
+                  iconColor: const Color(0xFFB3392E),
+                  label: 'Inventory',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => StockHealthScreen(
+                          outOfStockItems: _summary.outOfStockItems,
+                          lowStockItems: _summary.lowStockItems,
+                          totalStockCost: _summary.totalStockValuationCost,
+                          potentialStockSale: _summary.potentialStockValuationSale,
+                          totalItemsCount: _summary.totalItemsCount,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _buildActionCard(
+                  icon: Icons.qr_code_2_rounded,
+                  iconColor: const Color(0xFF10B981),
+                  label: 'Barcodes & QR',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const flash_barcode.HomeScreen()),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _buildActionCard(
+                  icon: Icons.shopping_bag_outlined,
+                  iconColor: const Color(0xFF8B5CF6),
+                  label: 'New Purchase',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const AddPurchaseOrderScreen()),
+                    ).then((_) => _loadData());
+                  },
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _buildActionCard(
+                  icon: Icons.person_add_alt_1_outlined,
+                  iconColor: const Color(0xFF0EA5E9),
+                  label: 'Add Party',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const AddNewPartyScreen()),
+                    ).then((_) => _loadData());
+                  },
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionCard({
+    required IconData icon,
+    required Color iconColor,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF9FAFB),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFE5E7EB)),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, size: 24, color: iconColor),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Color(0xFF18181B),
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetailedAnalyticsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: () {
+            setState(() {
+              _showDetailedAnalytics = !_showDetailedAnalytics;
+            });
+          },
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFE5E7EB)),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      _showDetailedAnalytics
+                          ? Icons.analytics_rounded
+                          : Icons.insights_rounded,
+                      color: const Color(0xFFB3392E),
+                      size: 20,
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      _showDetailedAnalytics
+                          ? 'Hide Detailed Analytics'
+                          : 'View Detailed Business Intelligence',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13,
+                        color: Color(0xFF18181B),
+                      ),
+                    ),
+                  ],
+                ),
+                Icon(
+                  _showDetailedAnalytics
+                      ? Icons.keyboard_arrow_up_rounded
+                      : Icons.keyboard_arrow_down_rounded,
+                  color: const Color(0xFF71717A),
+                ),
               ],
             ),
           ),
         ),
+        if (_showDetailedAnalytics) ...[
+          const SizedBox(height: 20),
+          _buildExecutiveHeroCards(),
+          const SizedBox(height: 20),
+          _buildSplineTrendChart(),
+          const SizedBox(height: 24),
+          _buildMostSellingSection(),
+          const SizedBox(height: 24),
+          _buildDeadStockSection(),
+          const SizedBox(height: 24),
+          _buildTopPartiesSection(),
+          const SizedBox(height: 24),
+          _buildPaymentModesSection(),
+          const SizedBox(height: 24),
+          _buildStockValuationSection(),
+        ],
       ],
     );
   }

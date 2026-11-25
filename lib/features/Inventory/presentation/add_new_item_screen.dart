@@ -1,3 +1,5 @@
+import '../../barcode/flashlabel/models/label_model.dart';
+import '../../barcode/flashlabel/screens/freestyle_editor_screen.dart';
 import 'dart:io';
 import 'dart:math';
 import 'dart:ui' as ui;
@@ -2274,21 +2276,35 @@ class _AddNewItemScreenState extends State<AddNewItemScreen> {
 
       // Sync with PostgreSQL Live Backend
       try {
-        ApiService.createItem({
-          'name': item.name,
-          'sku': item.barcode,
-          'selling_price': item.sellingPrice,
-          'purchase_price': item.purchasePrice,
-          'tax_rate': item.taxRatePercent,
-          'current_stock': item.stock,
-          'unit': item.unit,
-          'category': item.category,
-          'hsn_sac': item.hsnSac,
-        }).then((res) {
-          debugPrint('Backend sync item response: $res');
-        }).catchError((err) {
-          debugPrint('Backend sync item error: $err');
-        });
+        if (_isEditMode) {
+          ApiService.updateItem(item.id, {
+            'name': item.name,
+            'sku': item.barcode,
+            'selling_price': item.sellingPrice,
+            'purchase_price': item.purchasePrice,
+            'tax_rate': item.taxRatePercent,
+            'current_stock': item.stock,
+            'unit': item.unit,
+            'category': item.category,
+            'hsn_sac': item.hsnSac,
+            'item_code': item.itemCode,
+            'item_number': item.itemNumber,
+          }).catchError((_) => <String, dynamic>{});
+        } else {
+          ApiService.createItem({
+            'name': item.name,
+            'sku': item.barcode,
+            'selling_price': item.sellingPrice,
+            'purchase_price': item.purchasePrice,
+            'tax_rate': item.taxRatePercent,
+            'current_stock': item.stock,
+            'unit': item.unit,
+            'category': item.category,
+            'hsn_sac': item.hsnSac,
+            'item_code': item.itemCode,
+            'item_number': item.itemNumber,
+          }).catchError((_) => <String, dynamic>{});
+        }
       } catch (e) {
         debugPrint('API Item sync catch: $e');
       }
@@ -4016,7 +4032,7 @@ class _AddNewItemScreenState extends State<AddNewItemScreen> {
               const SizedBox(width: 10),
               Expanded(
                 child: _GradientButton(
-                  onPressed: () {},
+                  onPressed: () => _openBarcodePrinter(_barcodeController.text.trim()),
                   icon: Icons.print_rounded,
                   label: 'Print Label',
                   color: JoynColors.primary,
@@ -4630,4 +4646,67 @@ class _AddNewItemScreenState extends State<AddNewItemScreen> {
       ],
     );
   }
+
+  void _openBarcodePrinter(String code) {
+    final itemName = _itemNameController.text.trim().isNotEmpty ? _itemNameController.text.trim() : 'Item';
+    final price = _sellingPriceController.text.trim().isNotEmpty ? 'Rs. ${_sellingPriceController.text.trim()}' : '';
+    final bcValue = code.isNotEmpty ? code : (_barcodeController.text.trim().isNotEmpty ? _barcodeController.text.trim() : 'ITEM-001');
+
+    final template = LabelTemplate(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      title: itemName,
+      sizeSubtitle: '50x30mm',
+      category: 'Items',
+      subcategory: 'Custom',
+      size: const LabelSize(name: '50x30mm', widthMm: 50, heightMm: 30),
+      shape: LabelShape.rectangle,
+      elements: [
+        LabelElement(
+          id: '1',
+          type: ElementType.text,
+          text: itemName,
+          x: 10,
+          y: 4,
+          width: 170,
+          height: 18,
+          fontSize: 12,
+          isBold: true,
+        ),
+        if (price.isNotEmpty)
+          LabelElement(
+            id: '2',
+            type: ElementType.text,
+            text: price,
+            x: 10,
+            y: 22,
+            width: 170,
+            height: 16,
+            fontSize: 10,
+            isBold: true,
+          ),
+        LabelElement(
+          id: '3',
+          type: ElementType.barcode,
+          barcodeData: bcValue,
+          barcodeEncoding: 'CODE128',
+          showBarcodeText: true,
+          x: 10,
+          y: price.isNotEmpty ? 40 : 25,
+          width: 170,
+          height: 45,
+        ),
+      ],
+    );
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FreestyleEditorScreen(
+          initialTemplate: template,
+          customLabelName: itemName,
+        ),
+      ),
+    );
+  }
+
 }

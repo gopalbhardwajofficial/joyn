@@ -10,6 +10,18 @@ import '../providers/auth_provider.dart';
 class PhonePickerBottomSheet extends ConsumerWidget {
   const PhonePickerBottomSheet({super.key});
 
+  String _formatIndianPhone(String raw) {
+    String digits = raw.replaceAll(RegExp(r'\D'), '');
+    if (digits.length == 12 && digits.startsWith('91')) {
+      digits = digits.substring(2);
+    } else if (digits.length == 11 && (digits.startsWith('0') || digits.startsWith('1'))) {
+      digits = digits.substring(1);
+    } else if (digits.length > 10) {
+      digits = digits.substring(digits.length - 10);
+    }
+    return digits.length == 10 ? '+91 $digits' : raw;
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authProvider);
@@ -92,7 +104,7 @@ class PhonePickerBottomSheet extends ConsumerWidget {
 
           // Large Phone Number
           Text(
-            authState.phoneNumber,
+            _formatIndianPhone(authState.phoneNumber),
             style: JoynTypography.heading.copyWith(
               fontSize: 26,
               fontWeight: FontWeight.w700,
@@ -117,7 +129,7 @@ class PhonePickerBottomSheet extends ConsumerWidget {
             text: 'Continue',
             variant: JoynButtonVariant.filled,
             onPressed: () async {
-              final phone = authState.phoneNumber;
+              final phone = _formatIndianPhone(authState.phoneNumber);
               Navigator.of(context).pop();
               ref.read(authProvider.notifier).sendOtpApi(phone);
               GoRouter.of(context).push('/otp');

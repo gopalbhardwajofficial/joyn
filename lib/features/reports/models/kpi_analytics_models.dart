@@ -183,6 +183,8 @@ class KpiExecutiveSummary {
   final double aov;
   final double salesGrowthPercent;
   final double prevPeriodSales;
+  final double totalPurchases;
+  final int unpaidInvoicesCount;
 
   // Pillar 2: Working Capital & Liquidity
   final double youllGet;
@@ -225,6 +227,8 @@ class KpiExecutiveSummary {
     required this.aov,
     required this.salesGrowthPercent,
     required this.prevPeriodSales,
+    this.totalPurchases = 0.0,
+    this.unpaidInvoicesCount = 0,
     required this.youllGet,
     required this.youllGive,
     required this.cashInHand,

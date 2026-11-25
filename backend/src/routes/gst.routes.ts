@@ -4,7 +4,8 @@ import {
   getGstr2Handler,
   getGstr3bHandler,
   getHsnSummaryHandler,
-  getGstr9Handler
+  getGstr9Handler,
+  lookupGstinHandler
 } from '../controllers/gst.controller.js';
 import { verifyBusinessAccess } from '../middleware/rbac.middleware.js';
 
@@ -29,6 +30,7 @@ export async function gstRoutes(fastify: FastifyInstance) {
   fastify.get('/gstr-2', getGstr2Handler);
   fastify.get('/gstr-3b', getGstr3bHandler);
   fastify.get('/gstr-9', getGstr9Handler);
+  fastify.get('/lookup/:gstin', lookupGstinHandler);
   fastify.get('/hsn-summary', getHsnSummaryHandler);
 }
 

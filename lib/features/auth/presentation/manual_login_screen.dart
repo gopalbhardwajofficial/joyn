@@ -154,7 +154,14 @@ class _ManualLoginScreenState extends ConsumerState<ManualLoginScreen> {
                 onPressed: () async {
                   final rawPhone = _phoneController.text.trim();
                   if (rawPhone.isNotEmpty) {
-                    final cleanPhone = rawPhone.replaceAll(RegExp(r'\D'), '');
+                    var cleanPhone = rawPhone.replaceAll(RegExp(r'\D'), '');
+                    if (cleanPhone.length == 12 && cleanPhone.startsWith('91')) {
+                      cleanPhone = cleanPhone.substring(2);
+                    } else if (cleanPhone.length == 11 && (cleanPhone.startsWith('0') || cleanPhone.startsWith('1'))) {
+                      cleanPhone = cleanPhone.substring(1);
+                    } else if (cleanPhone.length > 10) {
+                      cleanPhone = cleanPhone.substring(cleanPhone.length - 10);
+                    }
                     final fullPhone = cleanPhone.length == 10 ? '+91 $cleanPhone' : rawPhone;
                     await ref.read(authProvider.notifier).sendOtpApi(fullPhone);
                   }

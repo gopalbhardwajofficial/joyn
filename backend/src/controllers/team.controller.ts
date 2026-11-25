@@ -175,14 +175,16 @@ export async function createTeamMemberHandler(req: FastifyRequest, reply: Fastif
     } else {
       // Insert new member
       const memberUuid = body.id && isValidUUID(body.id) ? body.id : undefined;
+      // Initial status: if user already has an active account, 1; otherwise 0 (Invited)
+      const initialActive = linkedUserId ? 1 : 0;
       const insertQuery = memberUuid
         ? `INSERT INTO team_members (id, business_id, user_id, name, phone, email, role_id, photo_url, is_active)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1) RETURNING *`
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`
         : `INSERT INTO team_members (business_id, user_id, name, phone, email, role_id, photo_url, is_active)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, 1) RETURNING *`;
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`;
       const insertParams = memberUuid
-        ? [memberUuid, activeBusinessId, linkedUserId, name.trim(), cleanPhone, email.trim(), resolvedRoleId, photoPath]
-        : [activeBusinessId, linkedUserId, name.trim(), cleanPhone, email.trim(), resolvedRoleId, photoPath];
+        ? [memberUuid, activeBusinessId, linkedUserId, name.trim(), cleanPhone, email.trim(), resolvedRoleId, photoPath, initialActive]
+        : [activeBusinessId, linkedUserId, name.trim(), cleanPhone, email.trim(), resolvedRoleId, photoPath, initialActive];
 
       const insertRes = await pool.query(insertQuery, insertParams);
       m = insertRes.rows[0];

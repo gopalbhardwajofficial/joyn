@@ -111,19 +111,26 @@ export async function createPurchaseOrderHandler(req: FastifyRequest, reply: Fas
     // Start ACID Transaction
     await client.query('BEGIN');
 
-    // 1. Get next sequential order number for this business
-    const maxOrderRes = await client.query(
-      `SELECT COALESCE(MAX(order_no), 2000) AS max_ord FROM purchase_orders WHERE business_id = $1`,
-      [activeBusinessId]
-    );
-    const nextOrderNo = parseInt(maxOrderRes.rows[0].max_ord, 10) + 1;
+    const body = req.body as any || {};
+    let nextOrderNo: number;
+    if (body.orderNo && parseInt(body.orderNo, 10) > 0) {
+      nextOrderNo = parseInt(body.orderNo, 10);
+    } else if (body.order_no && parseInt(body.order_no, 10) > 0) {
+      nextOrderNo = parseInt(body.order_no, 10);
+    } else {
+      const maxOrderRes = await client.query(
+        `SELECT COALESCE(MAX(order_no), 2000) AS max_ord FROM purchase_orders WHERE business_id = $1`,
+        [activeBusinessId]
+      );
+      nextOrderNo = parseInt(maxOrderRes.rows[0].max_ord, 10) + 1;
+    }
 
     const parsedItems = Array.isArray(items) ? items : (typeof items === 'string' ? JSON.parse(items) : []);
     const parsedTotal = parseFloat(totalAmount || 0);
     const orderDate = getIstDateString(date);
     const orderDueDate = dueDate ? getIstDateString(dueDate) : null;
 
-    const validId = toValidUuidOrNull(id);
+    const validId = id ? toDeterministicUuid(id) : null;
     const validPartyId = toValidUuidOrNull(partyId);
 
     // 2. Insert into purchase_orders

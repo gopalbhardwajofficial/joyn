@@ -88,6 +88,7 @@ class InvoicePdfGenerator {
     final totalTaxAmount = data.items.fold<double>(0, (sum, i) => sum + i.taxAmount);
     final taxableAmount = data.totalAmount - totalTaxAmount;
     final words = numberToWords(data.totalAmount);
+    final isPO = data.invoiceNo.toString().startsWith('PO-') || data.title.toUpperCase().contains('PURCHASE');
 
     // Build UPI URI for QR code
     final upiId = data.upiId.trim();
@@ -253,7 +254,7 @@ class InvoicePdfGenerator {
                           crossAxisAlignment: pw.CrossAxisAlignment.start,
                           children: [
                             pw.Text(
-                              'BILLED TO:',
+                              isPO ? 'VENDOR / SUPPLIER:' : 'BILLED TO:',
                               style: pw.TextStyle(
                                 fontSize: 8.5,
                                 fontWeight: pw.FontWeight.bold,
@@ -284,8 +285,8 @@ class InvoicePdfGenerator {
                         child: pw.Column(
                           crossAxisAlignment: pw.CrossAxisAlignment.start,
                           children: [
-                            _metaRow('Invoice No:', '#${data.invoiceNo}'),
-                            _metaRow('Invoice Date:', data.date),
+                            _metaRow(isPO ? 'PO No:' : 'Invoice No:', '#${data.invoiceNo}'),
+                            _metaRow(isPO ? 'PO Date:' : 'Invoice Date:', data.date),
                             if (data.dueDate.isNotEmpty) _metaRow('Due Date:', data.dueDate),
                             if (data.stateOfSupply.isNotEmpty) _metaRow('State of Supply:', data.stateOfSupply),
                             _metaRow('Payment Mode:', data.paymentMode.isNotEmpty ? data.paymentMode : 'Cash'),
@@ -323,9 +324,9 @@ class InvoicePdfGenerator {
                     _tableCell('Item & Description', isHeader: true),
                     _tableCell('HSN/SAC', isHeader: true, align: pw.TextAlign.center),
                     _tableCell('Qty', isHeader: true, align: pw.TextAlign.center),
-                    _tableCell('Rate (₹)', isHeader: true, align: pw.TextAlign.right),
+                    _tableCell('Rate (Rs.)', isHeader: true, align: pw.TextAlign.right),
                     _tableCell('Tax Rate', isHeader: true, align: pw.TextAlign.center),
-                    _tableCell('Total (₹)', isHeader: true, align: pw.TextAlign.right),
+                    _tableCell('Total (Rs.)', isHeader: true, align: pw.TextAlign.right),
                   ],
                 ),
                 // Rows
@@ -356,7 +357,7 @@ class InvoicePdfGenerator {
                           ],
                         ),
                       ),
-                      _tableCell(item.category.isNotEmpty ? item.category : '—', align: pw.TextAlign.center),
+                      _tableCell(item.category.isNotEmpty ? item.category : '-', align: pw.TextAlign.center),
                       _tableCell('${item.qty} ${item.unit.isNotEmpty ? item.unit : "Unit"}', align: pw.TextAlign.center),
                       _tableCell(item.unitPrice.toStringAsFixed(2), align: pw.TextAlign.right),
                       _tableCell(item.taxRate > 0 ? '${item.taxRate}%' : '0%', align: pw.TextAlign.center),
@@ -457,8 +458,8 @@ class InvoicePdfGenerator {
                       child: pw.Column(
                         crossAxisAlignment: pw.CrossAxisAlignment.end,
                         children: [
-                          _calcRow('Taxable Amount:', '₹${taxableAmount.toStringAsFixed(2)}'),
-                          if (hasTax) _calcRow('Total Tax (GST):', '₹${totalTaxAmount.toStringAsFixed(2)}'),
+                          _calcRow('Taxable Amount:', 'Rs. ${taxableAmount.toStringAsFixed(2)}'),
+                          if (hasTax) _calcRow('Total Tax (GST):', 'Rs. ${totalTaxAmount.toStringAsFixed(2)}'),
                           pw.SizedBox(height: 4),
                           pw.Divider(color: PdfColors.grey300, thickness: 0.8),
                           pw.SizedBox(height: 4),
@@ -470,13 +471,13 @@ class InvoicePdfGenerator {
                                 style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: primaryColor),
                               ),
                               pw.Text(
-                                '₹${data.totalAmount.toStringAsFixed(2)}',
+                                'Rs. ${data.totalAmount.toStringAsFixed(2)}',
                                 style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: primaryColor),
                               ),
                             ],
                           ),
                           pw.SizedBox(height: 6),
-                          _calcRow('Received Amount:', '₹${data.receivedAmount.toStringAsFixed(2)}'),
+                          _calcRow(isPO ? 'Advance Paid:' : 'Received Amount:', 'Rs. ${data.receivedAmount.toStringAsFixed(2)}'),
                           pw.Row(
                             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                             children: [
@@ -489,7 +490,7 @@ class InvoicePdfGenerator {
                                 ),
                               ),
                               pw.Text(
-                                '₹${data.balanceDue.toStringAsFixed(2)}',
+                                'Rs. ${data.balanceDue.toStringAsFixed(2)}',
                                 style: pw.TextStyle(
                                   fontSize: 10.5,
                                   fontWeight: pw.FontWeight.bold,

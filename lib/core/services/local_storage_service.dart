@@ -5,6 +5,7 @@ class LocalStorageService {
   static const String _keyPhoneNumber = 'phone_number';
   static const String _keyUserName = 'user_name';
   static const String _keyBusinessName = 'business_name';
+  static const String _keyBusinessId = 'business_id';
   static const String _keyEmail = 'email';
   static const String _keyBusinessesList = 'businesses_list';
 
@@ -67,6 +68,11 @@ class LocalStorageService {
     if (value.isNotEmpty) {
       await addBusiness(value);
     }
+  }
+
+  String get businessId => _prefs?.getString(_keyBusinessId) ?? '';
+  Future<void> setBusinessId(String value) async {
+    await _prefs?.setString(_keyBusinessId, value);
   }
 
   String get email => _prefs?.getString(_keyEmail) ?? '';

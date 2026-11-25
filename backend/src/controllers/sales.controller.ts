@@ -154,19 +154,26 @@ export async function createSaleOrderHandler(req: FastifyRequest, reply: Fastify
     // Start ACID Transaction
     await client.query('BEGIN');
 
-    // 1. Get next sequential invoice number for this business
-    const maxInvRes = await client.query(
-      `SELECT COALESCE(MAX(invoice_no), 1000) AS max_inv FROM sales_orders WHERE business_id = $1`,
-      [activeBusinessId]
-    );
-    const nextInvoiceNo = parseInt(maxInvRes.rows[0].max_inv, 10) + 1;
+    const body = req.body as any || {};
+    let nextInvoiceNo: number;
+    if (body.invoiceNo && parseInt(body.invoiceNo, 10) > 0) {
+      nextInvoiceNo = parseInt(body.invoiceNo, 10);
+    } else if (body.invoice_no && parseInt(body.invoice_no, 10) > 0) {
+      nextInvoiceNo = parseInt(body.invoice_no, 10);
+    } else {
+      const maxInvRes = await client.query(
+        `SELECT COALESCE(MAX(invoice_no), 1000) AS max_inv FROM sales_orders WHERE business_id = $1`,
+        [activeBusinessId]
+      );
+      nextInvoiceNo = parseInt(maxInvRes.rows[0].max_inv, 10) + 1;
+    }
 
     const parsedItems = Array.isArray(items) ? items : (typeof items === 'string' ? JSON.parse(items) : []);
     const parsedTotal = parseFloat(totalAmount || 0);
     const parsedReceived = parseFloat(receivedAmount || 0);
     const saleDate = getIstDateString(date);
 
-    const validId = toValidUuidOrNull(id);
+    const validId = id ? toDeterministicUuid(id) : null;
     const validPartyId = toValidUuidOrNull(partyId);
 
     let finalCustomerName = (customerName && customerName.trim().length > 0) ? customerName.trim() : 'Customer';

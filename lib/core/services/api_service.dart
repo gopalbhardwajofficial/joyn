@@ -110,6 +110,50 @@ class ApiService {
     }
   }
 
+  /// Phase 1: GSTIN Auto-Lookup & Address Extraction
+  static Future<Map<String, dynamic>> lookupGst(String gstin) async {
+    try {
+      final headers = await _getHeaders();
+      final clean = gstin.trim().toUpperCase();
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/reports/gst/lookup/$clean'),
+            headers: headers,
+          )
+          .timeout(const Duration(seconds: 8));
+
+      return jsonDecode(response.body);
+    } catch (e) {
+      final stateCode = gstin.trim().length >= 2 ? gstin.trim().substring(0, 2) : '';
+      const stateMap = {
+        '01': 'Jammu and Kashmir',
+        '02': 'Himachal Pradesh',
+        '03': 'Punjab',
+        '04': 'Chandigarh',
+        '05': 'Uttarakhand',
+        '06': 'Haryana',
+        '07': 'Delhi',
+        '08': 'Rajasthan',
+        '09': 'Uttar Pradesh',
+        '10': 'Bihar',
+        '24': 'Gujarat',
+        '27': 'Maharashtra',
+        '29': 'Karnataka',
+        '33': 'Tamil Nadu',
+        '36': 'Telangana',
+      };
+      final state = stateMap[stateCode] ?? 'Delhi';
+      return {
+        'success': true,
+        'gstin': gstin,
+        'state': state,
+        'legalName': '',
+        'address': '',
+        'city': '',
+      };
+    }
+  }
+
   /// Phase 1: Create Business Profile in Backend
   static Future<Map<String, dynamic>> createBusiness(Map<String, dynamic> businessData) async {
     try {
@@ -125,6 +169,41 @@ class ApiService {
       return jsonDecode(response.body);
     } catch (e) {
       return {'success': false, 'message': 'Failed to connect to cloud backend.'};
+    }
+  }
+
+  /// Phase 1: Update Business Profile in Backend
+  static Future<Map<String, dynamic>> updateBusiness(String businessId, Map<String, dynamic> businessData) async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http
+          .put(
+            Uri.parse('$baseUrl/business/$businessId'),
+            headers: headers,
+            body: jsonEncode(businessData),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to update business.'};
+    }
+  }
+
+  /// Phase 1: Delete Business Profile in Backend
+  static Future<Map<String, dynamic>> deleteBusiness(String businessId) async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http
+          .delete(
+            Uri.parse('$baseUrl/business/$businessId'),
+            headers: headers,
+          )
+          .timeout(const Duration(seconds: 10));
+
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to delete business.'};
     }
   }
 
@@ -180,6 +259,24 @@ class ApiService {
       return jsonDecode(response.body);
     } catch (e) {
       return {'success': false, 'message': 'Failed to save item to cloud backend.'};
+    }
+  }
+
+  /// Update Inventory Item in Backend
+  static Future<Map<String, dynamic>> updateItem(String itemId, Map<String, dynamic> itemData) async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http
+          .put(
+            Uri.parse('$baseUrl/items/$itemId'),
+            headers: headers,
+            body: jsonEncode(itemData),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to update item in cloud backend.'};
     }
   }
 

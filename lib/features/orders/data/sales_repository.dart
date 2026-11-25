@@ -729,32 +729,38 @@ class SalesRepository {
     final db = await _readyDb();
     final nameKey = partyName.trim().toLowerCase();
 
+    List<Map<String, dynamic>> maps = [];
     try {
-      final maps = await db.query(
+      maps = await db.query(
         'purchase_orders',
         where:
         'partyId = ? OR (COALESCE(partyId, "") = "" AND TRIM(LOWER(partyName)) = ?)',
         whereArgs: [partyId, nameKey],
         orderBy: 'createdAt DESC',
       );
-      debugPrint('🔎 getPurchaseOrdersForParty("$partyId","$partyName") → ${maps.length} rows');
-      return maps.map((map) => PurchaseOrderModel.fromDb(map)).toList();
     } catch (e) {
-      debugPrint('⚠️ Purchase primary failed: $e');
       try {
-        final fallback = await db.query(
+        maps = await db.query(
           'purchase_orders',
           where: 'TRIM(LOWER(partyName)) = ?',
           whereArgs: [nameKey],
           orderBy: 'createdAt DESC',
         );
-        debugPrint('🔎 Purchase fallback → ${fallback.length} rows');
-        return fallback.map((map) => PurchaseOrderModel.fromDb(map)).toList();
       } catch (e2) {
-        debugPrint('❌ Purchase fallback failed: $e2');
         return [];
       }
     }
+    final rawList = maps.map((map) => PurchaseOrderModel.fromDb(map)).toList();
+    final seen = <String>{};
+    final deduplicated = <PurchaseOrderModel>[];
+    for (final po in rawList) {
+      final key = '${po.partyName.trim().toLowerCase()}_${po.totalAmount.toStringAsFixed(2)}_${po.date.trim()}';
+      if (!seen.contains(key)) {
+        seen.add(key);
+        deduplicated.add(po);
+      }
+    }
+    return deduplicated;
   }
 
   // 🔍 DEBUG helpers
@@ -831,8 +837,16 @@ class SalesRepository {
             .map((o) => PurchaseOrderModel.fromApi(o as Map<String, dynamic>))
             .toList();
         for (final o in cloudOrders) {
-          await db.insert('purchase_orders', o.toDb(),
-              conflictAlgorithm: ConflictAlgorithm.replace);
+          final existing = await db.rawQuery(
+            'SELECT id FROM purchase_orders WHERE id = ? OR orderNo = ? OR (TRIM(LOWER(partyName)) = ? AND totalAmount = ? AND date = ?) LIMIT 1',
+            [o.id, o.orderNo, o.partyName.trim().toLowerCase(), o.totalAmount, o.date],
+          );
+          if (existing.isNotEmpty) {
+            final oldId = existing.first['id'] as String;
+            await db.update('purchase_orders', o.toDb(), where: 'id = ?', whereArgs: [oldId]);
+          } else {
+            await db.insert('purchase_orders', o.toDb(), conflictAlgorithm: ConflictAlgorithm.replace);
+          }
         }
         return cloudOrders;
       }

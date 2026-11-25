@@ -184,32 +184,49 @@ class _LabelCanvasViewState extends State<LabelCanvasView> {
                 ),
                 // Bottom-right resize handle (Screenshot 1, 4, 5)
                 Positioned(
-                  bottom: -11,
-                  right: -11,
+                  bottom: -14,
+                  right: -14,
                   child: GestureDetector(
-                    behavior: HitTestBehavior.translucent,
+                    behavior: HitTestBehavior.opaque,
                     onPanUpdate: (details) {
                       if (el.isLocked) return;
                       final dx = details.delta.dx / scale;
                       final dy = details.delta.dy / scale;
-                      double newW = (el.width + dx).clamp(20.0, 600.0);
-                      double newH = (el.height + dy).clamp(12.0, 600.0);
+                      double newW = (el.width + dx).clamp(20.0, 800.0);
+                      double newH = (el.height + dy).clamp(12.0, 800.0);
 
                       if (el.isIsometric || el.type == ElementType.qrcode) {
-                        final ratio = el.width / (el.height <= 0 ? 1 : el.height);
-                        newH = (newW / ratio).clamp(12.0, 600.0);
+                        final maxDim = (newW > newH ? newW : newH).clamp(20.0, 800.0);
+                        newW = maxDim;
+                        newH = maxDim;
                       }
 
                       widget.onElementResized?.call(el, newW, newH);
                     },
                     child: Container(
-                      width: 22,
-                      height: 22,
+                      width: 32,
+                      height: 32,
+                      alignment: Alignment.center,
                       decoration: const BoxDecoration(
-                        color: AppColors.primary,
+                        color: Colors.transparent,
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(Icons.crop_square, size: 13, color: Colors.white),
+                      child: Container(
+                        width: 24,
+                        height: 24,
+                        decoration: BoxDecoration(
+                          color: AppColors.primary,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.25),
+                              blurRadius: 4,
+                              offset: const Offset(0, 1),
+                            ),
+                          ],
+                        ),
+                        child: const Icon(Icons.open_in_full_rounded, size: 12, color: Colors.white),
+                      ),
                     ),
                   ),
                 ),

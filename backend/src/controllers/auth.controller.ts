@@ -52,7 +52,7 @@ export async function verifyOtpHandler(req: FastifyRequest, reply: FastifyReply)
     // 3. Auto-link team_members with this user_id if invited previously
     await pool.query(
       `UPDATE team_members
-       SET user_id = $1
+       SET user_id = $1, is_active = 1
        WHERE (phone = $2 OR phone = $3 OR RIGHT(phone, 10) = $2) AND user_id IS NULL`,
       [user.id, cleanPhone, `+91${cleanPhone}`]
     );

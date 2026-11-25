@@ -4,7 +4,11 @@ import { getDbPool } from '../db/connection.js';
 export async function createBusinessHandler(req: FastifyRequest, reply: FastifyReply) {
   try {
     const user = (req as any).user;
+    const body = (req.body as any) || {};
+    const params = (req.params as any) || {};
     const {
+      id,
+      businessId,
       businessName,
       ownerName,
       gstNumber,
@@ -13,21 +17,88 @@ export async function createBusinessHandler(req: FastifyRequest, reply: FastifyR
       phone1,
       email,
       address,
-      state
-    } = req.body as any;
+      state,
+      status
+    } = body;
+
+    const targetId = params.id || id || businessId;
+    const pool = getDbPool();
+
+    // Auto-migrate status column if needed
+    try {
+      await pool.query("ALTER TABLE business_profile ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'active'");
+    } catch (_) {}
+
+    // 1. If targetId exists, UPDATE the existing business instead of inserting a duplicate!
+    if (targetId) {
+      const existing = await pool.query(
+        "SELECT id FROM business_profile WHERE id = $1 AND owner_id = $2",
+        [targetId, user.userId]
+      );
+      if (existing.rows.length > 0) {
+        const updateRes = await pool.query(
+          `UPDATE business_profile SET
+            business_name = COALESCE($1, business_name),
+            owner_name = COALESCE($2, owner_name),
+            gst_number = COALESCE($3, gst_number),
+            business_type = COALESCE($4, business_type),
+            business_category = COALESCE($5, business_category),
+            phone1 = COALESCE($6, phone1),
+            email = COALESCE($7, email),
+            address = COALESCE($8, address),
+            state = COALESCE($9, state),
+            status = COALESCE($10, status),
+            updated_at = CURRENT_TIMESTAMP
+           WHERE id = $11
+           RETURNING *`,
+          [
+            businessName !== undefined ? businessName : null,
+            ownerName !== undefined ? ownerName : null,
+            gstNumber !== undefined ? gstNumber : null,
+            businessType !== undefined ? businessType : null,
+            businessCategory !== undefined ? businessCategory : null,
+            phone1 !== undefined ? phone1 : null,
+            email !== undefined ? email : null,
+            address !== undefined ? address : null,
+            state !== undefined ? state : null,
+            status !== undefined ? status : null,
+            targetId
+          ]
+        );
+        const b = updateRes.rows[0];
+        return reply.send({
+          success: true,
+          message: 'Business Profile updated successfully',
+          business: {
+            id: b.id,
+            ownerId: b.owner_id,
+            businessName: b.business_name,
+            ownerName: b.owner_name,
+            gstNumber: b.gst_number,
+            businessType: b.business_type,
+            businessCategory: b.business_category,
+            phone1: b.phone1,
+            email: b.email,
+            address: b.address,
+            state: b.state,
+            status: b.status || 'active',
+            createdAt: b.created_at,
+            updatedAt: b.updated_at
+          }
+        });
+      }
+    }
 
     if (!businessName) {
       return reply.status(400).send({ success: false, message: 'Business Name is required.' });
     }
 
-    const pool = getDbPool();
-
     // Insert new business into PostgreSQL
     const res = await pool.query(
       `INSERT INTO business_profile (
         owner_id, business_name, owner_name, gst_number, business_type, 
-        business_category, phone1, email, address, state
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        business_category, phone1, email, address, state, status
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING *`,
       [
         user.userId,
@@ -39,7 +110,8 @@ export async function createBusinessHandler(req: FastifyRequest, reply: FastifyR
         phone1 || user.phone,
         email || '',
         address || '',
-        state || 'Delhi'
+        state || 'Delhi',
+        status || 'active'
       ]
     );
 
@@ -512,3 +584,22 @@ export async function getInvoiceThemesHandler(req: FastifyRequest, reply: Fastif
   });
 }
 
+
+export async function deleteBusinessHandler(req: FastifyRequest, reply: FastifyReply) {
+  try {
+    const user = (req as any).user;
+    const { id } = req.params as { id: string };
+    const pool = getDbPool();
+
+    const check = await pool.query("SELECT id FROM business_profile WHERE id = $1 AND owner_id = $2", [id, user.userId]);
+    if (check.rows.length === 0) {
+      return reply.status(403).send({ success: false, message: 'Business not found or access denied.' });
+    }
+
+    await pool.query("DELETE FROM business_profile WHERE id = $1", [id]);
+    return reply.send({ success: true, message: 'Business deleted successfully.' });
+  } catch (error: any) {
+    console.error("Delete Business Error:", error);
+    return reply.status(500).send({ success: false, message: error?.message || 'Failed to delete business.' });
+  }
+}

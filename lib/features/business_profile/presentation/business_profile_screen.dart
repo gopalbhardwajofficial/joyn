@@ -12,6 +12,8 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../../core/theme/joyn_colors.dart';
 import '../../../core/theme/joyn_typography.dart';
+import '../../../core/services/api_service.dart';
+import '../../../core/services/local_storage_service.dart';
 import '../../../core/widgets/joyn_button.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../team_management/data/role_repository.dart';
@@ -152,6 +154,11 @@ class _BusinessProfileScreenState
 
   final List<TeamMemberModel> _teamMembers = [];
   final List<RoleModel> _roles = List.of(kDefaultRoles);
+
+  // Group D: Staff card toggle and business status
+  bool _isStaffCardMode = false;
+  TeamMemberModel? _selectedStaffForCard;
+  String _businessStatus = 'active'; // active, inactive, archived
 
   final List<String> _businessTypes = [
     'Retail Business',
@@ -963,7 +970,9 @@ class _BusinessProfileScreenState
             if (_selectedTab == 0) ...[
 
               _buildSectionHeader(1, 'Digital Business Card', Icons.badge_outlined),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
+              _buildCardTypeSelector(),
+              const SizedBox(height: 8),
               _build3CardCarouselSection(authState),
               const SizedBox(height: 16),
               _buildShareCardButton(),
@@ -999,6 +1008,9 @@ class _BusinessProfileScreenState
               _buildSectionHeader(6, 'Signature', Icons.draw_outlined),
               const SizedBox(height: 16),
               _buildSignatureCard(authState),
+
+              const SizedBox(height: 28),
+              _buildBusinessStatusSection(),
 
               const SizedBox(height: 28),
 
@@ -1184,21 +1196,33 @@ class _BusinessProfileScreenState
   }
 
   Widget _buildIndividualVisitingCard(int themeIndex, AuthState authState) {
-    final displayName = _businessNameController.text.isNotEmpty
-        ? _businessNameController.text
-        : (authState.businessName.isNotEmpty
-        ? authState.businessName
-        : 'Gopal Bhardwaj');
+    final isStaff = _isStaffCardMode && _selectedStaffForCard != null;
+    final staff = _selectedStaffForCard;
+    final displayName = isStaff
+        ? staff!.name
+        : (_businessNameController.text.isNotEmpty
+            ? _businessNameController.text
+            : (authState.businessName.isNotEmpty
+                ? authState.businessName
+                : 'My Business'));
 
-    final displayPhone = _phone1Controller.text.isNotEmpty
-        ? _phone1Controller.text
-        : authState.phoneNumber;
+    final displaySubheader = isStaff
+        ? '\${staff!.roleName} • \${_businessNameController.text.isNotEmpty ? _businessNameController.text : "JOYN"}'
+        : null;
 
-    final displayEmail = _emailController.text.isNotEmpty
-        ? _emailController.text
-        : (authState.email.isNotEmpty
-        ? authState.email
-        : 'gbdevelopmentservices@gmail.com');
+    final displayPhone = isStaff
+        ? staff!.phone
+        : (_phone1Controller.text.isNotEmpty
+            ? _phone1Controller.text
+            : authState.phoneNumber);
+
+    final displayEmail = isStaff && staff!.email.isNotEmpty
+        ? staff.email
+        : (_emailController.text.isNotEmpty
+            ? _emailController.text
+            : (authState.email.isNotEmpty
+                ? authState.email
+                : 'contact@joynonline.in'));
 
     final displayAddress = _addressController.text.isNotEmpty
         ? _addressController.text
@@ -1224,16 +1248,32 @@ class _BusinessProfileScreenState
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Expanded(
-                child: Text(
-                  displayName,
-                  style: JoynTypography.titleMedium.copyWith(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    color: textColor,
-                    letterSpacing: -0.2,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      displayName,
+                      style: JoynTypography.titleMedium.copyWith(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        color: textColor,
+                        letterSpacing: -0.2,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (displaySubheader != null)
+                      Text(
+                        displaySubheader,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: textColor.withValues(alpha: 0.8),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                  ],
                 ),
               ),
               InkWell(
@@ -1509,14 +1549,31 @@ class _BusinessProfileScreenState
           onChanged: (val) => setState(() => _showBusinessTypeOnCard = val),
         ),
         const SizedBox(height: 14),
-        _buildDropdownField(
-          label: 'Business Category',
-          value: _selectedCategory,
-          items: _categories,
-          icon: Icons.category_outlined,
-          onChanged: (val) {
-            if (val != null) setState(() => _selectedCategory = val);
-          },
+        Row(
+          children: [
+            Expanded(
+              child: _buildDropdownField(
+                label: 'Business Category',
+                value: _selectedCategory,
+                items: _categories,
+                icon: Icons.category_outlined,
+                onChanged: (val) {
+                  if (val != null) setState(() => _selectedCategory = val);
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              icon: const Icon(Icons.add_circle_outline, color: JoynColors.primary, size: 26),
+              tooltip: 'Add Category',
+              onPressed: _showAddCategoryDialog,
+            ),
+            IconButton(
+              icon: const Icon(Icons.delete_outline, color: Colors.red, size: 24),
+              tooltip: 'Delete Selected Category',
+              onPressed: _deleteSelectedCategory,
+            ),
+          ],
         ),
         const SizedBox(height: 8),
         _buildShowOnCardToggle(
@@ -1914,7 +1971,7 @@ class _BusinessProfileScreenState
                         width: 13,
                         height: 13,
                         decoration: BoxDecoration(
-                          color: member.isActive ? JoynColors.success : JoynColors.secondaryText,
+                          color: member.isActive ? JoynColors.success : const Color(0xFFF59E0B),
                           shape: BoxShape.circle,
                           border: Border.all(color: Colors.white, width: 2),
                         ),
@@ -1962,11 +2019,11 @@ class _BusinessProfileScreenState
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            member.isActive ? 'Active' : 'Not Active',
+                            member.isActive ? 'Active' : 'Invited',
                             style: JoynTypography.caption.copyWith(
                               fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: member.isActive ? JoynColors.success : JoynColors.secondaryText,
+                              fontWeight: FontWeight.w700,
+                              color: member.isActive ? JoynColors.success : const Color(0xFFF59E0B),
                             ),
                           ),
                         ],
@@ -2605,4 +2662,298 @@ class _BusinessProfileScreenState
       ),
     );
   }
+
+  Widget _buildCardTypeSelector() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: JoynColors.chipBackground,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: JoynColors.border.withValues(alpha: 0.6)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: InkWell(
+                  onTap: () => setState(() => _isStaffCardMode = false),
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    decoration: BoxDecoration(
+                      color: !_isStaffCardMode ? JoynColors.primary : Colors.transparent,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      'Owner Card',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                        color: !_isStaffCardMode ? Colors.white : JoynColors.primaryText,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: InkWell(
+                  onTap: () {
+                    setState(() {
+                      _isStaffCardMode = true;
+                      if (_selectedStaffForCard == null && _teamMembers.isNotEmpty) {
+                        _selectedStaffForCard = _teamMembers.first;
+                      }
+                    });
+                  },
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    decoration: BoxDecoration(
+                      color: _isStaffCardMode ? JoynColors.primary : Colors.transparent,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      'Staff Card',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                        color: _isStaffCardMode ? Colors.white : JoynColors.primaryText,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (_isStaffCardMode) ...[
+            const SizedBox(height: 10),
+            if (_teamMembers.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                child: Text(
+                  'No team members added yet. Add team members under the Team tab to generate staff cards.',
+                  style: TextStyle(fontSize: 11.5, color: Colors.orange),
+                ),
+              )
+            else
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: JoynColors.border),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<TeamMemberModel>(
+                    isExpanded: true,
+                    value: _selectedStaffForCard ?? _teamMembers.first,
+                    items: _teamMembers.map((m) => DropdownMenuItem(
+                      value: m,
+                      child: Text(
+                        '\${m.name} (\${m.roleName}) • \${m.phone}',
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    )).toList(),
+                    onChanged: (m) => setState(() => _selectedStaffForCard = m),
+                  ),
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  void _showAddCategoryDialog() {
+    final catController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add Business Category', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+        content: TextField(
+          controller: catController,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: 'Enter custom category',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () {
+              final newCat = catController.text.trim();
+              if (newCat.isNotEmpty) {
+                setState(() {
+                  if (!_categories.contains(newCat)) {
+                    _categories.insert(0, newCat);
+                  }
+                  _selectedCategory = newCat;
+                });
+                Navigator.pop(ctx);
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: JoynColors.primary, foregroundColor: Colors.white),
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _deleteSelectedCategory() {
+    if (_categories.length <= 1) return;
+    setState(() {
+      _categories.remove(_selectedCategory);
+      _selectedCategory = _categories.first;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Category deleted'), duration: Duration(seconds: 1)),
+    );
+  }
+
+  Widget _buildBusinessStatusSection() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: JoynColors.border.withValues(alpha: 0.7)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Business Status',
+                style: JoynTypography.bodyLarge.copyWith(fontWeight: FontWeight.w800, fontSize: 15),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: _businessStatus == 'active'
+                      ? JoynColors.success.withValues(alpha: 0.12)
+                      : (_businessStatus == 'inactive' ? Colors.orange.withValues(alpha: 0.12) : Colors.grey.withValues(alpha: 0.15)),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  _businessStatus.toUpperCase(),
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    color: _businessStatus == 'active'
+                        ? JoynColors.success
+                        : (_businessStatus == 'inactive' ? Colors.orange : Colors.grey.shade700),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _buildStatusPill('active', 'Active', Icons.check_circle_outline_rounded, JoynColors.success),
+              const SizedBox(width: 8),
+              _buildStatusPill('inactive', 'Inactive', Icons.pause_circle_outline_rounded, Colors.orange),
+              const SizedBox(width: 8),
+              _buildStatusPill('archived', 'Archive', Icons.archive_outlined, Colors.blueGrey),
+            ],
+          ),
+          const SizedBox(height: 16),
+          const Divider(height: 1, color: JoynColors.border),
+          const SizedBox(height: 14),
+          InkWell(
+            onTap: _confirmDeleteBusiness,
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.red.shade200),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: const [
+                  Icon(Icons.delete_forever_rounded, color: Colors.red, size: 18),
+                  SizedBox(width: 8),
+                  Text('Delete Business', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w800, fontSize: 13)),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusPill(String statusKey, String label, IconData icon, Color color) {
+    final isSelected = _businessStatus == statusKey;
+    return Expanded(
+      child: InkWell(
+        onTap: () => setState(() => _businessStatus = statusKey),
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: isSelected ? color.withValues(alpha: 0.15) : JoynColors.chipBackground,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: isSelected ? color : JoynColors.border),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 14, color: isSelected ? color : JoynColors.secondaryText),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                  color: isSelected ? color : JoynColors.secondaryText,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _confirmDeleteBusiness() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Business', style: TextStyle(fontWeight: FontWeight.w800)),
+        content: const Text(
+          'Are you sure you want to permanently delete this business? All orders, parties, and ledger records associated with this business will be removed.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final bizId = LocalStorageService().businessId;
+              if (bizId.isNotEmpty) {
+                await ApiService.deleteBusiness(bizId);
+              }
+              if (mounted) {
+                context.go('/company-selection');
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            child: const Text('Delete Permanently'),
+          ),
+        ],
+      ),
+    );
+  }
+
 }

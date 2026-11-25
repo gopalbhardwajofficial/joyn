@@ -1,3 +1,4 @@
+import { toDeterministicUuid } from '../utils/common.utils.js';
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { getDbPool } from '../db/connection.js';
 
@@ -127,24 +128,104 @@ export async function createItemHandler(req: FastifyRequest, reply: FastifyReply
     }
 
     const pool = getDbPool();
+    const body = req.body as any || {};
+    const explicitId = body.id ? toDeterministicUuid(body.id) : null;
+
+    // Check if item already exists by ID or by exact name for this business
+    let existingQuery = 'SELECT * FROM items WHERE business_id = $1 AND (LOWER(TRIM(name)) = LOWER(TRIM($2))';
+    const checkParams: any[] = [activeBiz, name.trim()];
+    if (explicitId) {
+      existingQuery += ' OR id = $3';
+      checkParams.push(explicitId);
+    }
+    existingQuery += ') ORDER BY created_at ASC LIMIT 1';
+
+    const existingRes = await pool.query(existingQuery, checkParams);
+    if (existingRes.rows.length > 0) {
+      // UPDATE existing item and preserve existing item_number and item_code!
+      const targetId = existingRes.rows[0].id;
+      const updateRes = await pool.query(
+        `UPDATE items SET
+          name = $1,
+          sku = COALESCE($2, sku),
+          barcode = COALESCE($3, barcode),
+          unit = COALESCE($4, unit),
+          category = COALESCE($5, category),
+          hsn_sac = COALESCE($6, hsn_sac),
+          location = COALESCE($7, location),
+          purchase_price = COALESCE($8, purchase_price),
+          selling_price = COALESCE($9, selling_price),
+          sale_price_tax_mode = COALESCE($10, sale_price_tax_mode),
+          purchase_price_tax_mode = COALESCE($11, purchase_price_tax_mode),
+          discount_on_sale_price = COALESCE($12, discount_on_sale_price),
+          discount_type = COALESCE($13, discount_type),
+          tax_rate_label = COALESCE($14, tax_rate_label),
+          tax_rate_percent = COALESCE($15, tax_rate_percent),
+          stock = COALESCE($16, stock),
+          min_stock_alert = COALESCE($17, min_stock_alert),
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = $18 AND business_id = $19
+        RETURNING *`,
+        [
+          name,
+          sku || null,
+          barcode || null,
+          unit || null,
+          category || null,
+          hsnSac || null,
+          location || null,
+          purchasePrice !== undefined ? purchasePrice : null,
+          sellingPrice !== undefined ? sellingPrice : null,
+          salePriceTaxMode || null,
+          purchasePriceTaxMode || null,
+          discountOnSalePrice !== undefined ? discountOnSalePrice : null,
+          discountType || null,
+          taxRateLabel || null,
+          taxRatePercent !== undefined ? taxRatePercent : null,
+          stock !== undefined ? stock : null,
+          minStockAlert !== undefined ? minStockAlert : null,
+          targetId,
+          activeBiz
+        ]
+      );
+      const updated = updateRes.rows[0];
+      return reply.send({
+        success: true,
+        message: 'Item updated successfully.',
+        item: {
+          id: updated.id,
+          name: updated.name,
+          sku: updated.sku,
+          barcode: updated.barcode,
+          sellingPrice: parseFloat(updated.selling_price || 0),
+          purchasePrice: parseFloat(updated.purchase_price || 0),
+          stock: updated.stock,
+          unit: updated.unit,
+          category: updated.category,
+          itemNumber: updated.item_number,
+          itemCode: updated.item_code,
+          createdAt: updated.created_at
+        }
+      });
+    }
 
     const numRes = await pool.query(
       `SELECT COALESCE(MAX(item_number), 1000) + 1 AS next_num FROM items WHERE business_id = $1`,
       [activeBiz]
     );
-    const body = req.body as any || {};
     const assignedNum = parseInt(body.itemNumber || body.item_number || numRes.rows[0].next_num, 10);
     const assignedCode = body.itemCode || body.item_code || `ITM-${assignedNum}`;
 
     const res = await pool.query(
       `INSERT INTO items (
-        business_id, name, sku, barcode, unit, category, hsn_sac, location,
+        id, business_id, name, sku, barcode, unit, category, hsn_sac, location,
         purchase_price, selling_price, sale_price_tax_mode, purchase_price_tax_mode,
         discount_on_sale_price, discount_type, tax_rate_label, tax_rate_percent,
         stock, min_stock_alert, item_number, item_code
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+      ) VALUES (COALESCE($1, gen_random_uuid()), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
       RETURNING *`,
       [
+        explicitId,
         activeBiz,
         name,
         sku || '',

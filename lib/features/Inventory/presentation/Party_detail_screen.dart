@@ -410,26 +410,41 @@ class _PartyDetailScreenState extends State<PartyDetailScreen> {
 
   // -------- Merged activity timeline --------
   List<_ActivityEntry> get _allActivities {
-    final list = <_ActivityEntry>[
-      ..._sales.map((s) => _ActivityEntry(
-        kind: _ActivityKind.sale,
-        id: s.id,
-        refNo: s.invoiceNo.toString(),
-        date: s.date,
-        total: s.totalAmount,
-        balanceDue: s.balanceDue,
-        sale: s,
-      )),
-      ..._purchases.map((p) => _ActivityEntry(
-        kind: _ActivityKind.purchase,
-        id: p.id,
-        refNo: p.orderNo.toString(),
-        date: p.date,
-        total: p.totalAmount,
-        balanceDue: p.totalAmount,
-        purchase: p,
-      )),
-    ];
+    final seenKeys = <String>{};
+    final list = <_ActivityEntry>[];
+
+    for (final s in _sales) {
+      final key = 'sale_${s.invoiceNo}_${s.totalAmount.toStringAsFixed(2)}_${s.date}';
+      if (!seenKeys.contains(key)) {
+        seenKeys.add(key);
+        list.add(_ActivityEntry(
+          kind: _ActivityKind.sale,
+          id: s.id,
+          refNo: s.invoiceNo.toString(),
+          date: s.date,
+          total: s.totalAmount,
+          balanceDue: s.balanceDue,
+          sale: s,
+        ));
+      }
+    }
+
+    for (final p in _purchases) {
+      final key = 'purchase_${p.totalAmount.toStringAsFixed(2)}_${p.date}';
+      if (!seenKeys.contains(key)) {
+        seenKeys.add(key);
+        list.add(_ActivityEntry(
+          kind: _ActivityKind.purchase,
+          id: p.id,
+          refNo: p.orderNo.toString(),
+          date: p.date,
+          total: p.totalAmount,
+          balanceDue: p.totalAmount,
+          purchase: p,
+        ));
+      }
+    }
+
     list.sort((a, b) =>
         _parseActivityDate(b.date).compareTo(_parseActivityDate(a.date)));
     return list;

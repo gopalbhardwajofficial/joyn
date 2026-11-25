@@ -79,6 +79,8 @@ class KpiAnalyticsRepository {
       aov: (k['aov'] as num?)?.toDouble() ?? 0.0,
       salesGrowthPercent: (k['salesGrowthPercent'] as num?)?.toDouble() ?? 0.0,
       prevPeriodSales: (k['prevPeriodSales'] as num?)?.toDouble() ?? 0.0,
+      totalPurchases: (k['totalPurchases'] as num?)?.toDouble() ?? 0.0,
+      unpaidInvoicesCount: (k['unpaidInvoicesCount'] as num?)?.toInt() ?? 0,
       youllGet: (k['youllGet'] as num?)?.toDouble() ?? 0.0,
       youllGive: (k['youllGive'] as num?)?.toDouble() ?? 0.0,
       cashInHand: (k['cashInHand'] as num?)?.toDouble() ?? 0.0,
@@ -257,6 +259,7 @@ class KpiAnalyticsRepository {
     double netSalesRealized = 0.0;
     double creditSales = 0.0;
     int invoicesCount = 0;
+    int unpaidInvoicesCount = 0;
     double prevPeriodSales = 0.0;
 
     final Map<String, double> paymentModeBreakdown = {
@@ -294,6 +297,9 @@ class KpiAnalyticsRepository {
       final total = (row['totalAmount'] as num?)?.toDouble() ?? 0.0;
       final received = (row['receivedAmount'] as num?)?.toDouble() ?? 0.0;
       final due = (total - received).clamp(0.0, double.infinity);
+      if (due > 0.01) {
+        unpaidInvoicesCount++;
+      }
       final paymentMode = (row['paymentMode'] as String? ?? 'Cash').trim();
       final paymentType = (row['paymentType'] as String? ?? 'Cash').trim();
 
@@ -424,6 +430,7 @@ class KpiAnalyticsRepository {
 
     // 6. Aggregate Purchases for Date Range
     final supplierSalesMap = <String, _PartyAgg>{};
+    double totalPurchasesInRange = 0.0;
 
     for (final pRow in purchaseRows) {
       final total = (pRow['totalAmount'] as num?)?.toDouble() ?? 0.0;
@@ -432,6 +439,7 @@ class KpiAnalyticsRepository {
       final pDate = parseAnyDate(pDateStr, DateTime.tryParse(pCreatedAt ?? ''));
 
       if (!pDate.isBefore(start) && !pDate.isAfter(end)) {
+        totalPurchasesInRange += total;
         final supplierName = (pRow['partyName'] ?? 'Supplier').toString().trim();
         final sKey = supplierName.toLowerCase();
         Map<String, dynamic>? dbParty = partyByName[sKey];
@@ -630,6 +638,8 @@ class KpiAnalyticsRepository {
       aov: aov,
       salesGrowthPercent: salesGrowthPercent,
       prevPeriodSales: prevPeriodSales,
+      totalPurchases: totalPurchasesInRange,
+      unpaidInvoicesCount: unpaidInvoicesCount,
       youllGet: totalReceivablesAllTime,
       youllGive: totalPayablesAllTime,
       cashInHand: cashInHand,

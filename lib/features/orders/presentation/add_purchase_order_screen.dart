@@ -606,9 +606,18 @@ class _AddPurchaseOrderScreenState extends State<AddPurchaseOrderScreen> {
         MaterialPageRoute(builder: (_) => const ScanCodeScreen()));
     if (barcode == null || barcode.isEmpty || !mounted) return;
 
+    final cleanScanned = barcode.trim().toLowerCase();
+    bool _matches(InventoryItemModel item) {
+      if (item.barcode.trim().toLowerCase() == cleanScanned) return true;
+      if ((item.itemCode ?? '').trim().toLowerCase() == cleanScanned) return true;
+      if (item.itemNumber != null && item.itemNumber.toString() == cleanScanned) return true;
+      if (item.name.trim().toLowerCase() == cleanScanned) return true;
+      return false;
+    }
+
     InventoryItemModel? foundItem;
     for (final item in _savedItems) {
-      if (item.barcode.isNotEmpty && item.barcode == barcode) {
+      if (_matches(item)) {
         foundItem = item;
         break;
       }
@@ -618,7 +627,7 @@ class _AddPurchaseOrderScreenState extends State<AddPurchaseOrderScreen> {
       try {
         final allDbItems = await _salesRepository.getItems();
         for (final item in allDbItems) {
-          if (item.barcode.isNotEmpty && item.barcode == barcode) {
+          if (_matches(item)) {
             foundItem = item;
             break;
           }
@@ -1174,7 +1183,7 @@ class _AddPurchaseOrderScreenState extends State<AddPurchaseOrderScreen> {
             customerPhone: '',
             items: List<OrderItemModel>.from(_items),
             totalAmount: order.totalAmount,
-            receivedAmount: 0,
+            receivedAmount: _paidAmount,
             businessName: resolvedBusinessName,
             businessPhone: profile?.phone1 ?? LocalStorageService().phoneNumber,
             businessEmail: profile?.email ?? LocalStorageService().email,
@@ -2748,7 +2757,7 @@ class _AddPurchaseOrderScreenState extends State<AddPurchaseOrderScreen> {
                       fontWeight: FontWeight.w700)),
               const SizedBox(width: 6),
               SizedBox(
-                width: 80,
+                width: 110,
                 child: TextField(
                   controller: _paidController,
                   textAlign: TextAlign.right,
@@ -2764,8 +2773,13 @@ class _AddPurchaseOrderScreenState extends State<AddPurchaseOrderScreen> {
                     border: InputBorder.none,
                     hintText: '0',
                   ),
-                  onChanged: (val) => setState(
-                          () => _paidAmount = double.tryParse(val) ?? 0.0),
+                  onChanged: (val) {
+                    final parsed = double.tryParse(val) ?? 0.0;
+                    setState(() {
+                      _paidAmount = parsed;
+                      _isPaidChecked = parsed > 0;
+                    });
+                  },
                 ),
               ),
             ],

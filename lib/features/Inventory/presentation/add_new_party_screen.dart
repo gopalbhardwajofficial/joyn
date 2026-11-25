@@ -1540,7 +1540,33 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
       children: [
         _buildDropdownField(label: 'GST Type', value: _selectedGstType, icon: Icons.rule_folder_outlined, onTap: _showGstTypePicker),
         const SizedBox(height: 14),
-        _buildFormField(label: 'GSTIN', hintText: 'Enter GST number', controller: _gstNumberController, icon: Icons.receipt_long_outlined),
+        _buildFormField(
+          label: 'GSTIN',
+          hintText: 'Enter GST number',
+          controller: _gstNumberController,
+          icon: Icons.receipt_long_outlined,
+          onChanged: (val) async {
+            if (val.trim().length == 15) {
+              final res = await ApiService.lookupGst(val.trim());
+              if (res['success'] == true) {
+                if (res['address'] != null && (res['address'].toString().isNotEmpty)) {
+                  _billingAddressController.text = res['address'].toString();
+                }
+                if (res['state'] != null && (res['state'].toString().isNotEmpty)) {
+                  setState(() => _selectedState = res['state'].toString());
+                }
+                if (res['tradeName'] != null && res['tradeName'].toString().isNotEmpty && _partyNameController.text.trim().isEmpty) {
+                  _partyNameController.text = res['tradeName'].toString();
+                }
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Address & State auto-filled from GSTIN!'), duration: Duration(seconds: 2)),
+                  );
+                }
+              }
+            }
+          },
+        ),
         const SizedBox(height: 14),
         _buildFormField(label: 'Place of Supply', hintText: 'Enter place of supply', controller: _placeOfSupplyController, icon: Icons.map_outlined),
       ],
@@ -1650,7 +1676,7 @@ class _AddNewPartyScreenState extends State<AddNewPartyScreen> {
     );
   }
 
-  Widget _buildFormField({required String label, required String hintText, required TextEditingController controller, TextInputType keyboardType = TextInputType.text, int maxLines = 1, IconData? icon}) {
+  Widget _buildFormField({required String label, required String hintText, required TextEditingController controller, TextInputType keyboardType = TextInputType.text, int maxLines = 1, IconData? icon, ValueChanged<String>? onChanged}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

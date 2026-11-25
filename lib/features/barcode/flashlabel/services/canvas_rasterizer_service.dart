@@ -137,12 +137,22 @@ class CanvasRasterizerService {
             ..style = PaintingStyle.fill;
 
           final double barHeight = el.showBarcodeText ? h * 0.78 : h;
-          final operations = bc.make(data, width: w, height: barHeight, drawText: false);
+          // Calculate minimum width required by code128 / barcode format (11 modules per char + 35 start/stop/checksum)
+          // If w is narrower than minWidth, scale canvas so it always fits without throwing
+          final double minW = (data.length * 11.0 + 35.0).clamp(100.0, 500.0);
+          final double targetW = w < minW ? minW : w;
+          final operations = bc.make(data, width: targetW, height: barHeight, drawText: false);
+
+          canvas.save();
+          if (w < minW) {
+            canvas.scale(w / minW, 1.0);
+          }
           for (final op in operations) {
             if (op is BarcodeBar && op.black) {
               canvas.drawRect(Rect.fromLTWH(op.left, op.top, op.width, op.height), paint);
             }
           }
+          canvas.restore();
 
           if (el.showBarcodeText) {
             final textSpan = TextSpan(

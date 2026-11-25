@@ -204,27 +204,38 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
     if (_isSharing) return;
     setState(() => _isSharing = true);
     try {
+      final isPO = widget.data.title.toLowerCase().contains("purchase");
+      final docPrefix = isPO ? "PO" : "Invoice";
+      final shareSubject = isPO
+          ? "Purchase Order PO-${widget.data.invoiceNo}"
+          : "Tax Invoice INV-${widget.data.invoiceNo}";
       final pdfBytes = await InvoicePdfGenerator.generate(widget.data);
       await Printing.sharePdf(
         bytes: pdfBytes,
-        filename: 'Invoice_${widget.data.invoiceNo}.pdf',
+        filename: "${docPrefix}_${widget.data.invoiceNo}.pdf",
+        subject: shareSubject,
       );
     } catch (e) {
       // Fallback to PNG sharing if PDF sharing has platform issue
       try {
+        final isPO = widget.data.title.toLowerCase().contains("purchase");
+        final docPrefix = isPO ? "PO" : "Invoice";
+        final shareSubject = isPO
+            ? "Purchase Order PO-${widget.data.invoiceNo}"
+            : "Tax Invoice INV-${widget.data.invoiceNo}";
         final bytes = await _captureCurrentThemeAsPng();
         await Share.shareXFiles(
           [
             XFile.fromData(
               bytes,
-              name: 'Invoice_${widget.data.invoiceNo}.png',
-              mimeType: 'image/png',
+              name: "${docPrefix}_${widget.data.invoiceNo}.png",
+              mimeType: "image/png",
             ),
           ],
-          text: '${widget.data.title} #${widget.data.invoiceNo}',
+          text: shareSubject,
         );
       } catch (err) {
-        _showError('Could not share invoice: $err');
+        _showError("Could not share invoice: $err");
       }
     } finally {
       if (mounted) setState(() => _isSharing = false);
@@ -235,10 +246,12 @@ class _InvoicePreviewScreenState extends State<InvoicePreviewScreen> {
     if (_isPrinting) return;
     setState(() => _isPrinting = true);
     try {
+      final isPO = widget.data.title.toLowerCase().contains("purchase");
+      final docPrefix = isPO ? "PO" : "Invoice";
       final pdfBytes = await InvoicePdfGenerator.generate(widget.data);
       await Printing.layoutPdf(
         onLayout: (_) async => pdfBytes,
-        name: 'Invoice_${widget.data.invoiceNo}.pdf',
+        name: "${docPrefix}_${widget.data.invoiceNo}.pdf",
       );
     } catch (e) {
       _showError('Could not print invoice: $e');
@@ -695,7 +708,7 @@ class _SimpleInvoiceCard extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text('Invoice No: ${data.invoiceNo}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600)),
+                  Text('${data.title.toLowerCase().contains("purchase") ? "PO No:" : "Invoice No:"} ${data.invoiceNo}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600)),
                   Text('Date: ${data.date}', style: const TextStyle(fontSize: 10)),
                 ],
               ),
@@ -710,7 +723,7 @@ class _SimpleInvoiceCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text('Total: ₹${data.totalAmount.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w700)),
-                Text('Received: ₹${data.receivedAmount.toStringAsFixed(2)}', style: const TextStyle(fontSize: 11)),
+                Text('${data.title.toLowerCase().contains("purchase") ? "Paid:" : "Received:"} ₹${data.receivedAmount.toStringAsFixed(2)}', style: const TextStyle(fontSize: 11)),
                 Text(
                   'Balance: ₹${data.balanceDue.toStringAsFixed(2)}',
                   style: const TextStyle(fontSize: 11, color: Colors.green, fontWeight: FontWeight.w700),
@@ -788,7 +801,7 @@ class _GstInvoiceCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   const Text('Invoice Details', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700)),
-                  Text('Invoice No.: ${data.invoiceNo}', style: const TextStyle(fontSize: 10)),
+                  Text('${data.title.toLowerCase().contains("purchase") ? "PO No.:" : "Invoice No.:"} ${data.invoiceNo}', style: const TextStyle(fontSize: 10)),
                   Text('Date: ${data.date}', style: const TextStyle(fontSize: 10)),
                 ],
               ),
@@ -811,7 +824,7 @@ class _GstInvoiceCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text('Total  ₹${data.totalAmount.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11)),
-                    Text('Received  ₹${data.receivedAmount.toStringAsFixed(2)}', style: const TextStyle(fontSize: 10)),
+                    Text('${data.title.toLowerCase().contains("purchase") ? "Paid" : "Received"}  ₹${data.receivedAmount.toStringAsFixed(2)}', style: const TextStyle(fontSize: 10)),
                     Text('Balance  ₹${data.balanceDue.toStringAsFixed(2)}', style: const TextStyle(fontSize: 10)),
                   ],
                 ),
@@ -887,7 +900,7 @@ class _ModernEliteCard extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text('Invoice No: ${data.invoiceNo}', style: const TextStyle(fontSize: 10)),
+                  Text('${data.title.toLowerCase().contains("purchase") ? "PO No:" : "Invoice No:"} ${data.invoiceNo}', style: const TextStyle(fontSize: 10)),
                   Text('Date: ${data.date}', style: const TextStyle(fontSize: 10)),
                 ],
               ),
@@ -903,7 +916,7 @@ class _ModernEliteCard extends StatelessWidget {
                 Text('Pricing / Breakup', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: accent)),
                 const SizedBox(height: 8),
                 _kv('Total Amount', '₹${data.totalAmount.toStringAsFixed(2)}', bold: true, color: accent),
-                _kv('Received Amount', '₹${data.receivedAmount.toStringAsFixed(2)}'),
+                _kv(data.title.toLowerCase().contains("purchase") ? "Paid Amount" : "Received Amount", "₹${data.receivedAmount.toStringAsFixed(2)}"),
                 _kv('Transaction Balance', '₹${data.balanceDue.toStringAsFixed(2)}'),
               ],
             ),
@@ -997,7 +1010,7 @@ class _DoubleDivineCard extends StatelessWidget {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Text('Invoice No.: ${data.invoiceNo}', style: const TextStyle(fontSize: 10)),
+                        Text('${data.title.toLowerCase().contains("purchase") ? "PO No.:" : "Invoice No.:"} ${data.invoiceNo}', style: const TextStyle(fontSize: 10)),
                         Text('Date: ${data.date}', style: const TextStyle(fontSize: 10)),
                       ],
                     ),
@@ -1012,7 +1025,7 @@ class _DoubleDivineCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text('Total: ₹${data.totalAmount.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w700)),
-                      Text('Received: ₹${data.receivedAmount.toStringAsFixed(2)}', style: const TextStyle(fontSize: 11)),
+                      Text('${data.title.toLowerCase().contains("purchase") ? "Paid:" : "Received:"} ₹${data.receivedAmount.toStringAsFixed(2)}', style: const TextStyle(fontSize: 11)),
                       Text('Balance: ₹${data.balanceDue.toStringAsFixed(2)}', style: const TextStyle(fontSize: 11)),
                     ],
                   ),

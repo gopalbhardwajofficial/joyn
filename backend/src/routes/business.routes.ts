@@ -6,6 +6,7 @@ import {
   updateBusinessBrandingHandler,
   uploadBusinessLogoHandler,
   uploadBusinessSignatureHandler,
+  deleteBusinessHandler,
   getInvoiceThemesHandler
 } from '../controllers/business.controller.js';
 import { verifyBusinessAccess } from '../middleware/rbac.middleware.js';
@@ -21,6 +22,9 @@ export async function businessRoutes(fastify: FastifyInstance) {
   });
 
   fastify.post('/', createBusinessHandler);
+  fastify.put('/', createBusinessHandler);
+  fastify.put('/:id', createBusinessHandler);
+  fastify.delete('/:id', deleteBusinessHandler);
   fastify.get('/my-businesses', getMyBusinessesHandler);
 
   // Phase 8: Business Profile Branding & Invoice Theme Endpoints
